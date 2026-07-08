@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>POS · La Gelateria de Roses</title>
+<style>
+  :root {
+    --p320:      #009CA6;
+    --p320-dk:   #007681;
+    --p320-dk2:  #005a63;
+    --p320-lt:   #4dbfc7;
+    --gold:      #d8b24a;
+    --gold-lt:   #f0d488;
+    --panel:     #ffffff;
+    --panel-2:   #eef6f7;
+    --line:      #cfe4e6;
+    --txt:       #0a2e33;
+    --txt-dim:   #5c7a7e;
+    --coral:     #ff5a4d;
+    --amber:     #f5a623;
+    --ok:        #17a67a;
+    --ok-dk:     #128561;
+    /* === TAMAÑOS AJUSTABLES DE LAS 4 ZONAS (layout Prigest, TPV 1024x768) === */
+    --z-ticketH: 190px;                                     /* alto zona ticket arriba */
+    --z-catW: 320px;   --z-catH: 104px;  --z-catFont: 18px;  /* Zona 1: menús grandes (café/taxi scroll) */
+    --z-prodCols: 4;   --z-prodH: 82px;  --z-prodFont: 14px; /* Zona 2: productos (5 filas) */
+    --z-barraH: 7px;   --z-barraFont: 11px;                  /* Zona 3: botones */
+    --z-payW: 250px;   --z-totalFont: 38px;                  /* Zona 4: total/cobrar */
+  }
+  body.preview-mode .topbar .btn-top,
+  body.preview-mode .topbar .chip,
+  body.preview-mode .topbar .reloj { display: none; }
+  body.preview-mode { pointer-events: none; }
+  .adm-campo { padding: 14px; border: 2px solid var(--line); border-radius: 10px; font-size: 18px; font-weight: 700; background: var(--panel-2); cursor: pointer; min-height: 52px; }
+  .adm-campo.active { border-color: var(--p320); background: #fff; }
+  .adm-campo.ph { color: #9db3b6; font-weight: 400; }
+  .adm-teclado { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; }
+  .adm-teclado .tecla { padding: 14px 0; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--line); font-size: 17px; font-weight: 700; }
+  .adm-teclado .tecla:active { background: var(--p320); color: #fff; }
+  .adm-teclado .tecla.wide { grid-column: span 2; }
+  .adm-teclado .tecla.ok { background: var(--ok); color: #fff; grid-column: span 3; }
+  .adm-teclado .tecla.del2 { background: #ffe1dd; color: var(--coral); }
+  .adm-teclado .tecla.shift-on { background: var(--p320); color: #fff; }
+  .tt-display { min-height: 56px; padding: 14px 16px; border: 2px solid var(--p320); border-radius: 12px; font-size: 22px; font-weight: 700; background: var(--panel-2); margin-bottom: 12px; word-break: break-all; }
+  .camp-tactil { flex: 1; padding: 13px 16px; border: 2px solid var(--line); border-radius: 10px; font-size: 16px; font-weight: 700; background: var(--panel-2); cursor: pointer; min-height: 48px; display: flex; align-items: center; }
+  .camp-tactil:active { border-color: var(--p320); }
+  .camp-tactil.buit { color: #9db3b6; font-weight: 400; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+  html, body {
+    height: 100%; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--p320); color: var(--txt);
+    user-select: none; -webkit-user-select: none;
+  }
+  button { font-family: inherit; cursor: pointer; border: none; color: inherit; }
+  .hidden { display: none !important; }
+
+  .bg-logo { position: fixed; inset: 0; z-index: 0; pointer-events: none; background: var(--p320); display: flex; align-items: center; justify-content: center; }
+  .bg-logo img { width: 42%; max-width: 560px; opacity: 0.06; filter: brightness(0) invert(1); }
+
+  /* LOGIN */
+  #login { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at 50% 35%, var(--p320-lt), var(--p320) 55%, var(--p320-dk)); }
+  .login-inner { text-align: center; width: 620px; max-width: 94vw; }
+  .login-logo { width: 200px; margin: 0 auto 6px; display: block; filter: drop-shadow(0 8px 24px #0004); }
+  .login-card { background: #ffffffee; backdrop-filter: blur(8px); padding: 24px; border-radius: 22px; box-shadow: 0 24px 70px #0005; }
+  .login-card .field { display: flex; align-items: center; gap: 12px; width: 100%; padding: 16px 20px; margin-bottom: 12px; font-size: 20px; background: var(--panel-2); border: 2px solid var(--line); border-radius: 14px; text-align: left; }
+  .login-card .field.active { border-color: var(--p320); }
+  .login-card .field .lbl { color: var(--txt-dim); font-size: 14px; min-width: 92px; }
+  .login-card .field .val { flex: 1; font-weight: 600; letter-spacing: 1px; }
+  .login-card .field .val.ph { color: #9db3b6; font-weight: 400; letter-spacing: 0; }
+  .btn-primary { width: 100%; padding: 18px; font-size: 20px; font-weight: 700; background: var(--p320); color: #fff; border-radius: 14px; margin-top: 4px; box-shadow: 0 6px 18px #007681aa; }
+  .btn-primary:active { background: var(--p320-dk); }
+  .login-err { color: var(--coral); font-size: 15px; min-height: 20px; margin-top: 10px; font-weight: 600; }
+
+  /* APP */
+  #app { display: none; flex-direction: column; height: 100%; position: relative; z-index: 1; }
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 5px 12px; background: var(--p320-dk); color: #fff; flex-shrink: 0; box-shadow: 0 2px 12px #0003; }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; min-width: 0; }
+  .brand img { height: 22px; filter: brightness(0) invert(1); }
+  .brand .frase { font-size: 12px; font-weight: 700; font-style: italic; color: #ffffffdd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topbar .reloj { color: #ffffffcc; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .topbar .spacer { flex: 1; }
+  .chip { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #ffffff22; }
+  .chip.admin { background: var(--gold); color: #3a2a00; }
+  .btn-top { padding: 8px 12px; border-radius: 9px; background: #ffffff22; font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .btn-top:active { background: #ffffff44; }
+  .btn-top.cajon { background: var(--gold); color: #3a2a00; }
+  .btn-top.reord-on { background: var(--ok); color: #fff; animation: pulsear 1.2s infinite; }
+  @keyframes pulsear { 0%,100%{opacity:1} 50%{opacity:.65} }
+  /* Modo reordenar: elementos con aspecto "movible" */
+  .cat-btn.reord, .prod-btn.reord { cursor: grab; outline: 3px dashed #ffffffaa; outline-offset: -6px; }
+  .prod-btn.reord .n, .prod-btn.reord .p { pointer-events: none; }
+  .cat-btn.arrossegant, .prod-btn.arrossegant { opacity: .9; transform: scale(1.06); box-shadow: 0 12px 30px #0006; cursor: grabbing; }
+  .placeholder-reord { outline: 3px dashed var(--gold) !important; filter: grayscale(0.3); }
+  body.reordenando .buscador { opacity: .4; pointer-events: none; }
+
+  /* ===== LAYOUT PRINCIPAL: 3 columnas ===== */
+  .cobro { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 7px; padding: 8px; }
+
+  /* ===== ZONA SUPERIOR: ticket horizontal + total/cobrar ===== */
+  .arriba { height: var(--z-ticketH, 232px); display: flex; gap: 8px; flex-shrink: 0; }
+  .ticket-box { flex: 1; background: var(--panel); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 3px 10px #0002; min-width: 0; }
+  .ticket-head { display: flex; background: var(--panel-2); border-bottom: 2px solid var(--line); padding: 8px 12px; font-size: 12px; font-weight: 800; color: var(--txt-dim); flex-shrink: 0; }
+  .ticket-head .c-desc { flex: 1; }
+  .ticket-head .c-q { width: 74px; text-align: center; }
+  .ticket-head .c-pr { width: 66px; text-align: right; }
+  .ticket-head .c-im { width: 66px; text-align: right; }
+
+  /* Lista del ticket (scrollable cuando se llena) */
+  .ticket-items { flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; }
+  .ticket-items .empty-t { margin-top: 40px; text-align: center; color: var(--txt-dim); font-size: 15px; }
+  .titem { display: flex; align-items: center; padding: 7px 12px; border-bottom: 1px solid #f0f4f5; }
+  .titem.desc-line { background: #fff8ec; }
+  .titem .tdel { width: 28px; height: 28px; border-radius: 7px; background: #ffe1dd; color: var(--coral); font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center; line-height: 1; flex-shrink: 0; margin-right: 8px; }
+  .titem .tdel:active { background: var(--coral); color: #fff; }
+  .titem .tcol { width: 4px; height: 26px; border-radius: 3px; flex-shrink: 0; margin-right: 8px; }
+  .titem .tn { flex: 1; font-size: 14px; font-weight: 700; line-height: 1.1; min-width: 0; color: var(--txt); }
+  .titem .tq { width: 74px; display: flex; align-items: center; justify-content: center; gap: 4px; flex-shrink: 0; }
+  .titem .tq button { width: 26px; height: 26px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line); font-size: 16px; font-weight: 700; line-height: 1; color: var(--p320-dk); }
+  .titem .tq button:active { background: var(--p320); color: #fff; }
+  .titem .tq .n { min-width: 16px; text-align: center; font-weight: 800; font-size: 14px; }
+  .titem .tpr { width: 66px; text-align: right; font-size: 13px; color: var(--txt-dim); flex-shrink: 0; }
+  .titem .ts { width: 66px; text-align: right; font-size: 14px; font-weight: 800; color: var(--p320-dk); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+  /* Panel total + cobrar (derecha arriba) */
+  .total-panel { width: var(--z-payW, 260px); flex-shrink: 0; background: var(--panel); border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 3px 10px #0002; overflow: hidden; }
+  .total-big { text-align: center; padding: 12px 0; border-bottom: 2px solid var(--line); flex-shrink: 0; }
+  .total-big .lbl { font-size: 14px; color: var(--txt-dim); font-weight: 700; }
+  .total-big .val { font-size: var(--z-totalFont, 40px); font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -1px; color: var(--p320-dk); line-height: 1; margin-top: 2px; }
+  .btn-cobrar-big {
+    flex: 1; margin: 8px; border-radius: 12px; font-weight: 900;
+    background: var(--ok); color: #fff; box-shadow: 0 5px 14px #17a67a77;
+    position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center;
+  }
+  .btn-cobrar-big .cob-txt { font-size: 46px; letter-spacing: 3px; }
+  .btn-cobrar-big:active { background: var(--ok-dk); }
+  .btn-cobrar-big:disabled { opacity: .4; box-shadow: none; }
+  .bb-fila .btn-canvi-barra { flex: 1; padding: calc(var(--z-barraH, 9px)) 3px; border-radius: 8px; font-size: calc(var(--z-barraFont, 12px) - 1px); font-weight: 800; background: #eafaf4; border: 2px solid var(--ok); color: var(--ok-dk); }
+  .bb-fila .btn-canvi-barra:active { background: var(--ok); color: #fff; }
+  .bb-fila .btn-canvi-barra:disabled { opacity: .4; }
+
+  /* ===== ZONA 3: barra de botones estirada ===== */
+  .barra-botones { background: var(--panel); border-radius: 12px; padding: 7px; box-shadow: 0 3px 10px #0002; flex-shrink: 0; }
+  .bb-fila { display: flex; gap: 5px; }
+  .bb-fila .desc-btn { flex: 1; padding: calc(var(--z-barraH, 9px)) 3px; border-radius: 8px; font-size: var(--z-barraFont, 12px); font-weight: 800; background: var(--panel-2); border: 2px solid var(--line); }
+  .bb-fila .desc-btn.on { background: var(--amber); color: #3a2600; border-color: var(--amber); }
+  .bb-fila .desc-btn.desc-50 { font-size: calc(var(--z-barraFont, 12px) - 1px); border-color: #d98e3a; color: #a55a1a; }
+  .bb-fila .desc-btn.desc-50.on { background: #d98e3a; color: #fff; border-color: #d98e3a; }
+  .bb-fila .btn-fidelitat { flex: 1.4; padding: calc(var(--z-barraH, 9px)) 3px; border-radius: 8px; font-size: var(--z-barraFont, 12px); font-weight: 800; background: #fff3d6; border: 2px solid var(--gold); color: #7a5a00; }
+  .bb-fila .btn-fidelitat.on { background: var(--gold); color: #3a2a00; box-shadow: 0 3px 10px #d8b24a88; }
+  .bb-fila .btn-acc { flex: 1; padding: calc(var(--z-barraH, 9px)) 3px; border-radius: 8px; font-size: calc(var(--z-barraFont, 12px) - 1px); font-weight: 700; background: var(--panel-2); border: 2px solid var(--line); color: var(--txt); }
+  .bb-fila .btn-acc:active { background: var(--p320); color: #fff; }
+  .bb-fila .btn-acc .mult { background: var(--amber); color: #3a2600; padding: 1px 6px; border-radius: 5px; font-size: 11px; margin-left: 2px; }
+  .bb-fila .btn-lupa { flex: 0 0 42px; padding: calc(var(--z-barraH, 9px)) 0; border-radius: 8px; font-size: 16px; background: var(--panel-2); border: 2px solid var(--line); }
+  .bb-fila .btn-lupa:active { background: var(--p320); }
+  .bb-fila .btn-lupa.on { background: var(--p320); }
+  .bb-fila .btn-buidar { flex: 0.9; padding: calc(var(--z-barraH, 9px)) 3px; border-radius: 8px; font-size: calc(var(--z-barraFont, 12px) - 1px); font-weight: 800; background: #fff; border: 2px solid var(--coral); color: var(--coral); }
+
+  /* ===== ZONA INFERIOR: menús + productos ===== */
+  .abajo { flex: 1; display: flex; gap: 8px; min-height: 0; }
+
+  /* Menús: 2 columnas grandes, con scroll (café y taxi abajo) */
+  .cats {
+    width: var(--z-catW, 320px); flex-shrink: 0; display: grid; grid-template-columns: 1fr 1fr;
+    grid-auto-rows: var(--z-catH, 120px); gap: 8px; overflow-y: auto;
+    border-right: 3px solid #ffffff55; padding-right: 8px; align-content: start;
+  }
+  .cat-btn {
+    border-radius: 14px; font-size: var(--z-catFont, 16px); font-weight: 800; color: #05252a;
+    line-height: 1.1; text-align: center; box-shadow: 0 2px 7px #0002;
+    transition: transform .05s; padding: 4px; display: flex; align-items: center;
+    justify-content: center;
+  }
+  .cat-btn:active { transform: scale(0.96); }
+  .cat-btn.on { outline: 4px solid #fff; outline-offset: -4px; box-shadow: 0 5px 16px #0004; }
+
+  /* Productos: cuadrícula, texto centrado opcional */
+  .prods {
+    flex: 1; overflow-y: auto; display: grid;
+    grid-template-columns: repeat(var(--z-prodCols, 4), 1fr);
+    grid-auto-rows: var(--z-prodH, 76px); gap: 7px; align-content: start; padding: 2px;
+  }
+  .prod-btn {
+    border-radius: 11px; padding: 7px 9px; display: flex; flex-direction: column;
+    justify-content: space-between; text-align: left; box-shadow: 0 2px 6px #0003;
+    transition: transform .05s; border: none; color: #06272b;
+  }
+  .prod-btn.centrat { text-align: center; align-items: center; justify-content: center; gap: 3px; }
+  .prod-btn:active { transform: scale(0.94); border-color: var(--p320-dk); box-shadow: 0 1px 4px #0004; }
+  .prod-btn .n { font-size: var(--z-prodFont, 13px); font-weight: 800; line-height: 1.1; text-shadow: 0 1px 0 #ffffff55; }
+  .prod-btn .p { font-size: calc(var(--z-prodFont, 13px) + 3px); font-weight: 900; font-variant-numeric: tabular-nums; text-shadow: 0 1px 0 #ffffff55; }
+  .prod-btn.sin-precio .p { color: var(--coral); font-size: 12px; }
+
+  /* MODALES */
+  .overlay { position: fixed; inset: 0; background: #003b4199; backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px; }
+  .modal { background: var(--panel); border-radius: 22px; padding: 28px; width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto; box-shadow: 0 24px 70px #0006; }
+  .modal h2 { font-size: 24px; margin-bottom: 4px; }
+  .modal .msub { color: var(--txt-dim); font-size: 15px; margin-bottom: 22px; }
+  .worker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .worker-btn { padding: 22px 14px; border-radius: 14px; font-size: 18px; font-weight: 800; background: var(--panel-2); border: 2px solid var(--line); }
+  .worker-btn:active { background: var(--p320); color: #fff; }
+  .modal-close { margin-top: 18px; width: 100%; padding: 18px; border-radius: 14px; background: var(--panel-2); font-weight: 700; font-size: 16px; }
+
+  /* confirmación cobro grande */
+  .confirm-total { text-align: center; margin: 10px 0 22px; }
+  .confirm-total .l { font-size: 18px; color: var(--txt-dim); font-weight: 700; }
+  .confirm-total .v { font-size: 68px; font-weight: 900; color: var(--p320-dk); font-variant-numeric: tabular-nums; letter-spacing: -3px; line-height: 1; margin-top: 6px; }
+  .confirm-btns { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; }
+  .btn-conf-cancel { padding: 24px; border-radius: 14px; font-size: 17px; font-weight: 800; background: var(--panel-2); border: 2px solid var(--line); }
+  .btn-conf-ok { padding: 24px; border-radius: 14px; font-size: 22px; font-weight: 900; background: var(--ok); color: #fff; box-shadow: 0 6px 16px #17a67a88; }
+  .btn-conf-ok:active { background: var(--ok-dk); }
+
+  /* calculadora cambio */
+  .cambio-total { text-align: center; font-size: 20px; color: var(--txt-dim); margin-bottom: 6px; }
+  .cambio-total b { color: var(--p320-dk); font-size: 26px; }
+  .entregado-box { text-align: center; background: var(--panel-2); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .entregado-box .lbl { font-size: 14px; color: var(--txt-dim); }
+  .entregado-box .val { font-size: 38px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .cambio-box { text-align: center; border-radius: 14px; padding: 16px; margin-bottom: 16px; background: #e9f9f2; }
+  .cambio-box .lbl { font-size: 15px; color: var(--ok); font-weight: 700; }
+  .cambio-box .val { font-size: 44px; font-weight: 900; color: var(--ok); font-variant-numeric: tabular-nums; }
+  .cambio-box.negativo { background: #ffecea; }
+  .cambio-box.negativo .lbl, .cambio-box.negativo .val { color: var(--coral); }
+  .billetes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .billete-btn { padding: 18px 6px; border-radius: 12px; font-size: 18px; font-weight: 800; background: var(--p320); color: #fff; }
+  .billete-btn:active { background: var(--p320-dk); }
+  .billete-btn.exacto { background: var(--gold); color: #3a2a00; grid-column: span 2; }
+
+  /* teclados */
+  .teclado { display: grid; gap: 8px; margin-top: 4px; }
+  .teclado.qwerty { grid-template-columns: repeat(10, 1fr); }
+  .teclado.num { grid-template-columns: repeat(3, 1fr); max-width: 320px; margin: 0 auto; }
+  .tecla { padding: 18px 4px; border-radius: 12px; font-size: 20px; font-weight: 700; background: var(--panel-2); border: 1px solid var(--line); text-align: center; }
+  .tecla:active { background: var(--p320); color: #fff; }
+  .tecla.wide { grid-column: span 2; }
+  .tecla.ok { background: var(--ok); color: #fff; }
+  .tecla.del2 { background: #ffe9e6; color: var(--coral); }
+
+  /* ADMIN */
+  #admin { display: none; position: absolute; top: 54px; left: 0; right: 0; bottom: 0; overflow-y: auto; padding: 20px; z-index: 5; background: var(--p320); }
+  #admin.show { display: block; }
+  .admin-inner { background: #ffffffee; border-radius: 20px; padding: 24px; box-shadow: 0 8px 30px #0003; }
+  .admin-tabs { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
+  .admin-tab { padding: 13px 20px; border-radius: 12px; font-size: 15px; font-weight: 700; background: var(--panel-2); border: 2px solid var(--line); }
+  .admin-tab.on { background: var(--p320); color: #fff; border-color: var(--p320); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px,1fr)); gap: 16px; margin-bottom: 26px; }
+  .card { background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 20px; }
+  .card .k { font-size: 14px; color: var(--txt-dim); margin-bottom: 8px; font-weight: 600; }
+  .card .v { font-size: 32px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+  .card .v.p320 { color: var(--p320-dk); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 13px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--txt-dim); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .seccion-titulo { font-size: 18px; font-weight: 800; margin: 28px 0 14px; }
+  .badge-desc { background: var(--amber); color: #3a2600; padding: 3px 10px; border-radius: 7px; font-size: 13px; font-weight: 800; }
+  .precio-input { width: 110px; padding: 10px; background: #fff; border: 2px solid var(--line); border-radius: 10px; color: var(--txt); font-size: 16px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+  .precio-input:focus { outline: none; border-color: var(--p320); }
+  .btn-sm { padding: 10px 18px; border-radius: 10px; font-size: 14px; font-weight: 700; background: var(--p320); color: #fff; }
+  .btn-cerrar-caja { padding: 18px 32px; border-radius: 14px; font-size: 17px; font-weight: 900; background: var(--coral); color: #fff; }
+
+  .toast { position: fixed; bottom: 34px; left: 50%; transform: translateX(-50%) translateY(90px); background: var(--ok); color: #fff; padding: 18px 32px; border-radius: 16px; font-weight: 800; font-size: 18px; box-shadow: 0 12px 40px #0005; z-index: 100; transition: transform .3s cubic-bezier(.2,1.4,.4,1); pointer-events: none; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.err { background: var(--coral); }
+  .empty { text-align: center; color: var(--txt-dim); padding: 44px 20px; font-size: 16px; }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: #b5d5d8; border-radius: 9px; }
+</style>
+</head>
+<body>
+
+<div class="bg-logo"><img src="img/logo-web.png" alt=""></div>
+
+<div id="login">
+  <div class="login-inner">
+    <img src="img/logo-web.png" class="login-logo" alt="La Gelateria de Roses">
+    <div class="login-card">
+      <div class="field" id="f-user" onclick="focusLogin('user')">
+        <span class="lbl">Usuari</span><span class="val ph" id="v-user">toca aquí</span>
+      </div>
+      <div class="field" id="f-pass" onclick="focusLogin('pass')">
+        <span class="lbl">Contrasenya</span><span class="val ph" id="v-pass">toca aquí</span>
+      </div>
+      <button class="btn-primary" onclick="doLogin()">Entrar</button>
+      <div class="login-err" id="login-err"></div>
+      <div class="teclado qwerty" id="login-teclado" style="margin-top:16px"></div>
+    </div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="topbar">
+    <div class="brand"><img src="img/logo-web.png" alt=""><span class="frase">We love gelato! We love emotions! We love La Gelateria de Roses!</span></div>
+    <div class="reloj" id="reloj"></div>
+    <div class="spacer"></div>
+    <button class="btn-top cajon" onclick="abrirCajon()">💶 Obrir calaix</button>
+    <button class="btn-top hidden" id="btn-reordenar" onclick="toggleReordenar()">↕️ Reordenar</button>
+    <button class="btn-top hidden" id="btn-admin" onclick="mostrarAdmin()">⚙️ Admin</button>
+    <button class="btn-top hidden" id="btn-volver" onclick="mostrarCobro()">← Vendre</button>
+    <div class="chip" id="chip-user">—</div>
+    <button class="btn-top" onclick="minimitzar()" title="Minimitzar">➖</button>
+    <button class="btn-top" onclick="confirmarSortir()">Sortir</button>
+  </div>
+
+  <div class="cobro" id="cobro">
+    <!-- ZONA SUPERIOR: ticket horizontal + total/cobrar -->
+    <div class="arriba">
+      <div class="ticket-box">
+        <div class="ticket-head">
+          <span class="c-desc">Descripció</span>
+          <span class="c-q">Quant.</span>
+          <span class="c-pr">Preu</span>
+          <span class="c-im">Import</span>
+        </div>
+        <div class="ticket-items" id="ticket-items">
+          <div class="empty-t">Prem un producte per començar</div>
+        </div>
+      </div>
+      <div class="total-panel">
+        <div class="total-big">
+          <div class="lbl">TOTAL</div>
+          <div class="val" id="total">0,00 €</div>
+        </div>
+        <button class="btn-cobrar-big" id="btn-cobrar" onclick="cobrarRapido()" disabled>
+          <span class="cob-txt">COBRAR</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ZONA 3: barra de botones estirada -->
+    <div class="barra-botones">
+      <div class="bb-fila">
+        <button class="desc-btn on" data-d="0" onclick="setDesc(0)">Sense</button>
+        <button class="desc-btn" data-d="10" onclick="setDesc(10)">-10%</button>
+        <button class="desc-btn" data-d="20" onclick="setDesc(20)">-20%</button>
+        <button class="desc-btn desc-50" data-d="50" onclick="setDesc(50)">"50% solo staff"</button>
+        <button class="btn-fidelitat" id="btn-fidelitat" onclick="toggleFidelitat()">🎁 FIDELITAT −3€</button>
+        <button class="btn-acc" onclick="abrirMultiplicador()">✖️ Multi <span class="mult hidden" id="mult-badge"></span></button>
+        <button class="btn-acc" onclick="abrirCalculadora()">🧮 Calc.</button>
+        <button class="btn-acc" onclick="aparcarTicket()">🎫 Aparcar</button>
+        <button class="btn-acc" id="btn-recuperar" onclick="verAparcados()">📋 Aparcats (0)</button>
+        <button class="btn-acc" onclick="verUltimsTiquets()">🧾 Tiquets</button>
+        <button class="btn-lupa" onclick="abrirBuscador()" id="btn-lupa" title="Cercar">🔍</button>
+        <button class="btn-canvi-barra" id="btn-cambio" onclick="cobrarConCambio()" disabled>💵 Canvi</button>
+        <button class="btn-buidar" onclick="limpiarTicket()">🗑️ Buidar</button>
+      </div>
+    </div>
+
+    <!-- ZONA INFERIOR: menús + productos -->
+    <div class="abajo">
+      <div class="cats" id="cats"></div>
+      <div class="prods" id="prods"></div>
+    </div>
+  </div>
+
+  <div id="admin"><div class="admin-inner" id="admin-inner"></div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="app.js?v=20260705l"></script>
+</body>
+</html>

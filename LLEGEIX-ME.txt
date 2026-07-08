@@ -1,0 +1,132 @@
+═══════════════════════════════════════════════════════════
+   POS LA GELATERIA DE ROSES
+   El teu TPV propi — control total, sense tècnics externs
+═══════════════════════════════════════════════════════════
+
+
+▶ QUÈ NECESSITES (només el primer cop)
+───────────────────────────────────────────────────────────
+1. Node.js versió 22 LTS (o superior)
+   Descarrega'l gratis a: https://nodejs.org
+   (tria el botó "LTS", instal·lació normal, tot per defecte)
+
+
+▶ COM ENGEGAR EL POS
+───────────────────────────────────────────────────────────
+1. Fes doble clic a:  INICIAR-POS.bat
+2. S'obrirà el navegador amb el TPV.
+3. El primer cop instal·larà unes dependències (triga uns segons).
+
+   Per parar-lo: tanca la finestra negra (la consola).
+
+
+▶ SURTEN ELS PRODUCTES "SENSE PREU"? (IMPORTANT)
+───────────────────────────────────────────────────────────
+   Si en actualitzar el programa els productes surten en vermell
+   "sense preu", és perquè la base de dades antiga encara hi és.
+
+   SOLUCIÓ FÀCIL: fes doble clic a  ACTUALITZAR-PREUS.bat
+   Això posa tots els preus SENSE esborrar vendes ni tancaments.
+
+   (Alternativa, si comences de zero i no importa perdre dades:
+    esborra el fitxer de la carpeta "datos" i torna a engegar.)
+
+
+▶ USUARIS PER DEFECTE  (canvia'ls de seguida!)
+───────────────────────────────────────────────────────────
+   ADMIN (tu):      usuari "admin"   contrasenya "admin"
+   STAFF (personal): usuari "staff"  contrasenya "staff"
+
+   → Entra com admin → pestanya "Contrasenyes" → canvia-les.
+
+   L'ADMIN veu tot: vendes, tancaments, preus, descomptes...
+   El STAFF NOMÉS pot cobrar i obrir el calaix. Res més.
+
+
+▶ PRIMERS PASSOS COM ADMIN
+───────────────────────────────────────────────────────────
+1. Entra com "admin".
+2. Pestanya "Preus": posa el preu de cada producte.
+   (els que estan a 0,00 surten en vermell a la venda)
+3. Pestanya "Treballadors": afegeix els noms del personal.
+   (surten quan s'aplica un descompte, per saber qui l'ha fet)
+4. Pestanya "Tancament": prem "Obrir caixa nova".
+5. Ja pots començar a vendre!
+
+
+▶ FUNCIONS DE LA PANTALLA DE VENDA
+───────────────────────────────────────────────────────────
+• CERCADOR: toca la barra de dalt i escriu amb el teclat en
+  pantalla per trobar qualsevol producte ràpid.
+• MULTIPLICAR: prem "✖️ Multiplicar", posa la quantitat, i el
+  següent producte que toquis s'afegeix amb aquesta quantitat.
+• APARCAR: deixa un tiquet a mitges ("🎫 Aparcar") i atén un
+  altre client. Recupera'l amb "📋 Aparcats".
+• DESCOMPTES: -10/-20/-50%. Si n'apliques un, et demanarà el
+  nom del treballador. Es reseteja sol en cobrar o buidar.
+• COBRAR EFECTIU: calculadora de canvi automàtica — toca el
+  bitllet que et donen (5/10/20/50) o "Import exacte" i et diu
+  quant tornar.
+• X VERMELLA: treu un producte del tiquet a l'instant.
+• ANUL·LAR VENDA: només admin, des de "Avui". Queda registrat.
+
+
+▶ IMPRESSORA DE TIQUETS — Posiflex PP-8803-B
+───────────────────────────────────────────────────────────
+1. Connecta la impressora al ordinador (USB) i instal.la el
+   seu driver de Windows (Posiflex PP-8000 series). Un cop
+   instal.lada, surt com una impressora normal de Windows.
+2. Posa-la com a IMPRESSORA PREDETERMINADA a Windows.
+3. Al POS: Admin -> Contrasenyes (Config) -> "Impressió
+   activada". Prova amb "Imprimir tiquet de prova".
+4. IMPORTANT per un tiquet net: el primer cop, al diàleg
+   d'impressió del navegador, tria la Posiflex, i a "Més
+   opcions" desactiva "Capçaleres i peus" i posa marges a
+   "Cap/Ninguno". El navegador ho recordarà.
+
+   El tiquet surt automàticament en cobrar (amb logo, productes,
+   total i canvi). Pots desactivar-ho des de Config quan vulguis.
+
+
+▶ CADA NIT — TANCAR CAIXA
+───────────────────────────────────────────────────────────
+   Entra com admin -> "Tancament" -> "Tancar caixa i treure tiquet"
+   Surt el resum del dia (total, efectiu, targeta, per treballador,
+   productes venuts). Pots imprimir-lo.
+   L'endemà: "Obrir caixa nova" i a vendre.
+
+
+▶ CONNECTAR DES DE iPAD / MÒBIL / UN ALTRE PC (per WiFi)
+───────────────────────────────────────────────────────────
+1. Aquest ordinador i l'iPad han d'estar a la MATEIXA WiFi.
+2. Mira la IP d'aquest ordinador:
+   - Obre "cmd" i escriu:  ipconfig
+   - Busca "Adreça IPv4", per exemple: 192.168.1.50
+3. A l'iPad/mòbil obre el navegador i escriu:
+   http://192.168.1.50:3001
+   (canvia els números per la teva IP)
+4. Afegeix-ho a la pantalla d'inici per tenir-ho com una app.
+
+   CONSELL: posa IP fixa a aquest ordinador perquè no canviï,
+   o fes servir Tailscale (com al Mac mini) per entrar-hi
+   des de fora del local també.
+
+
+▶ ON ES GUARDEN LES DADES
+───────────────────────────────────────────────────────────
+   Tot es guarda a la carpeta "datos" (fitxer pos.sqlite).
+   FES-NE CÒPIA DE SEGURETAT de tant en tant (copia la carpeta
+   "datos" a un USB o al núvol). És tota la teva facturació.
+
+
+▶ PASSAR-HO A LA TPV DEFINITIVA
+───────────────────────────────────────────────────────────
+1. Copia TOTA aquesta carpeta al USB.
+2. Enganxa-la a la TPV.
+3. Instal·la Node.js 22 a la TPV (si no hi és).
+4. Doble clic a INICIAR-POS.bat. Llest.
+
+   (Si vols començar net a la TPV, esborra la carpeta "datos"
+    abans de copiar — es tornarà a crear buida.)
+
+═══════════════════════════════════════════════════════════

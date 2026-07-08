@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editor de disseny · POS Gelateria</title>
+<style>
+  :root {
+    --p320: #009CA6; --p320-dk: #007681; --gold: #d8b24a;
+    --panel: #fff; --line: #cfe4e6; --txt: #0a2e33; --txt-dim: #5c7a7e;
+    --ok: #17a67a; --coral: #ff5a4d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-user-select: none; user-select: none; }
+  body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; background: #e8f0f1; color: var(--txt); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+  .topbar { background: var(--p320-dk); color: #fff; padding: 10px 20px; display: flex; align-items: center; gap: 16px; box-shadow: 0 2px 12px #0003; z-index: 10; flex-shrink: 0; }
+  .topbar h1 { font-size: 17px; font-weight: 800; }
+  .topbar .sub { font-size: 12px; color: #ffffffbb; }
+  .topbar .spacer { flex: 1; }
+  .topbar button { padding: 10px 16px; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .btn-reset { background: #ffffff22; color: #fff; }
+  .btn-code { background: var(--ok); color: #fff; }
+
+  .work { flex: 1; display: flex; min-height: 0; }
+
+  .panel { width: 320px; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 16px; flex-shrink: 0; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #fff; background: var(--p320); padding: 7px 12px; border-radius: 7px; margin: 20px 0 12px; }
+  .panel h2:first-child { margin-top: 0; }
+  .ctrl { margin-bottom: 13px; }
+  .ctrl label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .ctrl .row { display: flex; align-items: center; gap: 10px; }
+  .ctrl input[type=range] { flex: 1; accent-color: var(--p320); height: 6px; }
+  .ctrl .val { font-size: 13px; font-weight: 700; color: var(--p320-dk); min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button { flex: 1; min-width: 40px; padding: 9px 4px; border: 2px solid var(--line); background: #fff; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .seg button.on { background: var(--p320); color: #fff; border-color: var(--p320); }
+  .hint { font-size: 12px; color: var(--txt-dim); line-height: 1.4; background: #f0f7f8; padding: 10px 12px; border-radius: 8px; margin-bottom: 14px; }
+  .color-row { display: flex; align-items: center; gap: 10px; }
+  .color-row input[type=color] { width: 44px; height: 36px; border: 2px solid var(--line); border-radius: 8px; cursor: pointer; background: #fff; }
+
+  .preview-wrap { flex: 1; padding: 16px; overflow: auto; display: flex; align-items: flex-start; justify-content: center; }
+  .screen {
+    border-radius: 12px; overflow: hidden; box-shadow: 0 12px 40px #0004;
+    display: flex; flex-direction: column; position: relative;
+    flex-shrink: 0;
+  }
+  .screen-logo { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; }
+  .screen-logo img { filter: brightness(0) invert(1); }
+  .s-top { color: #fff; padding: 8px 14px; display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 14px; z-index: 2; }
+  .s-top img { height: 26px; filter: brightness(0) invert(1); }
+  .s-top .sp { flex: 1; }
+  .s-top .b { background: var(--gold); color: #3a2a00; padding: 7px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; }
+  .s-body { flex: 1; display: flex; min-height: 0; z-index: 1; }
+
+  .col-cats { flex-shrink: 0; display: grid; align-content: start; overflow: hidden; }
+  .cat { display: flex; align-items: center; justify-content: center; font-weight: 800; color: #05252a; text-align: center; box-shadow: 0 2px 6px #0002; line-height: 1.05; }
+  .col-center { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .searchbar { background:#fff; display:flex; align-items:center; color:#9db3b6; flex-shrink:0; }
+  .prods { display: grid; align-content: start; overflow: hidden; flex: 1; }
+  .prod { display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 2px 6px #0002; color: #06272b; overflow: hidden; }
+  .prod .n { font-weight: 800; line-height: 1.1; }
+  .prod .p { font-weight: 900; }
+
+  .col-pay { flex-shrink: 0; background: #fff; display: flex; flex-direction: column; box-shadow: 0 3px 12px #0003; overflow: hidden; }
+  .pay-head { padding: 10px 14px; font-size: 12px; font-weight: 800; color: var(--txt-dim); letter-spacing: 1px; border-bottom: 2px solid var(--line); }
+  .pay-list { flex: 1; overflow: hidden; padding: 8px; }
+  .pl-row { display: flex; align-items: center; gap: 8px; padding: 9px 6px; border-bottom: 1px solid var(--line); }
+  .pl-row .n { flex: 1; font-weight: 700; }
+  .pl-row .q { font-weight: 800; color: var(--p320-dk); min-width: 26px; text-align: center; }
+  .pl-row .pr { font-weight: 800; min-width: 54px; text-align: right; }
+  .pay-total { padding: 10px 14px; display: flex; justify-content: space-between; align-items: baseline; border-top: 2px solid var(--line); }
+  .pay-total .l { font-size: 13px; color: var(--txt-dim); font-weight: 700; }
+  .pay-total .v { font-weight: 900; color: var(--p320-dk); font-variant-numeric: tabular-nums; }
+  .btn-cobrar { margin: 10px; color: #fff; font-weight: 900; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; box-shadow: 0 6px 16px #17a67a66; }
+  .btn-cobrar .logo-bg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .btn-cobrar .logo-bg img { filter: brightness(0) invert(1); }
+  .btn-cobrar span { position: relative; z-index: 1; }
+  .btn-cambio { margin: 0 10px 10px; background: #eef6f7; border: 2px solid var(--line); color: var(--txt); font-weight: 700; display: flex; align-items: center; justify-content: center; }
+
+  .code-out { position: fixed; inset: 0; background: #000a; display: none; align-items: center; justify-content: center; z-index: 50; padding: 30px; }
+  .code-box { background: #fff; border-radius: 16px; padding: 24px; max-width: 620px; width: 100%; }
+  .code-box h3 { margin-bottom: 12px; }
+  .code-box p { font-size: 14px; color: var(--txt-dim); line-height: 1.5; margin-bottom: 16px; }
+  .code-box pre { background: #0f2830; color: #7fe0c8; padding: 16px; border-radius: 10px; font-size: 12px; overflow: auto; max-height: 280px; margin-bottom: 16px; white-space: pre-wrap; }
+  .code-box button { padding: 12px 20px; border: none; border-radius: 10px; background: var(--p320); color: #fff; font-weight: 700; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>🎨 Editor de disseny</h1>
+  <span class="sub">Ajusta-ho tot i mira'l canviar a l'instant</span>
+  <div class="spacer"></div>
+  <button class="btn-reset" onclick="resetear()">↺ Per defecte</button>
+  <button class="btn-code" onclick="exportar()">✓ M'agrada, genera-ho</button>
+</div>
+
+<div class="work">
+  <div class="panel">
+    <div class="hint">Mou els controls i mira la pantalla. Quan t'agradi, prem <b>"Genera-ho"</b> i passa la configuració al Claude.</div>
+
+    <h2>📐 Mida de la pantalla</h2>
+    <div class="ctrl"><label>Amplada pantalla (px del teu monitor)</label><div class="row"><input type="range" id="scrW" min="900" max="1920" value="1920" step="2"><span class="val" id="scrW-v">1920</span></div></div>
+    <div class="ctrl"><label>Alçada pantalla</label><div class="row"><input type="range" id="scrH" min="500" max="1080" value="1080" step="2"><span class="val" id="scrH-v">1080</span></div></div>
+
+    <h2>🎨 Colors</h2>
+    <div class="ctrl"><label>Color de fons (Pantone 320U)</label><div class="color-row"><input type="color" id="bgColor" value="#009CA6"><span style="font-size:13px;color:var(--txt-dim)">fons general</span></div></div>
+    <div class="ctrl"><label>Color botó COBRAR</label><div class="color-row"><input type="color" id="cobColor" value="#17a67a"><span style="font-size:13px;color:var(--txt-dim)">verd cobrar</span></div></div>
+    <div class="ctrl"><label>Opacitat logo de fons</label><div class="row"><input type="range" id="bgLogoOp" min="0" max="30" value="8"><span class="val" id="bgLogoOp-v">8</span>%</div></div>
+
+    <h2>◀ Menús (esquerra)</h2>
+    <div class="ctrl"><label>Amplada columna</label><div class="row"><input type="range" id="catW" min="140" max="420" value="300"><span class="val" id="catW-v">300</span></div></div>
+    <div class="ctrl"><label>Columnes</label><div class="seg" id="catCols"><button data-v="1">1</button><button data-v="2" class="on">2</button><button data-v="3">3</button></div></div>
+    <div class="ctrl"><label>Alçada de cada menú</label><div class="row"><input type="range" id="catH" min="48" max="140" value="135"><span class="val" id="catH-v">135</span></div></div>
+    <div class="ctrl"><label>Mida lletra</label><div class="row"><input type="range" id="catFont" min="12" max="28" value="22"><span class="val" id="catFont-v">22</span></div></div>
+    <div class="ctrl"><label>Cantonades arrodonides</label><div class="row"><input type="range" id="catRadius" min="0" max="30" value="20"><span class="val" id="catRadius-v">20</span></div></div>
+    <div class="ctrl"><label>Estirar menús per omplir l'alçada</label><div class="seg" id="catStretch"><button data-v="no">No (compactes)</button><button data-v="si" class="on">Sí (estirats)</button></div></div>
+
+    <h2>▦ Productes (centre)</h2>
+    <div class="ctrl"><label>Amplada de cada producte</label><div class="row"><input type="range" id="prodW" min="100" max="280" value="170"><span class="val" id="prodW-v">170</span></div></div>
+    <div class="ctrl"><label>Alçada de cada producte</label><div class="row"><input type="range" id="prodH" min="64" max="180" value="120"><span class="val" id="prodH-v">120</span></div></div>
+    <div class="ctrl"><label>Mida lletra nom</label><div class="row"><input type="range" id="prodFont" min="11" max="26" value="17"><span class="val" id="prodFont-v">17</span></div></div>
+    <div class="ctrl"><label>Cantonades arrodonides</label><div class="row"><input type="range" id="prodRadius" min="0" max="28" value="16"><span class="val" id="prodRadius-v">16</span></div></div>
+
+    <h2>▶ Tiquet + Cobrar (dreta)</h2>
+    <div class="ctrl"><label>On va la llista del tiquet?</label><div class="seg" id="ticketPos"><button data-v="dreta" class="on">A la dreta</button><button data-v="dalt">A dalt</button></div></div>
+    <div class="ctrl"><label>Amplada columna dreta</label><div class="row"><input type="range" id="payW" min="220" max="480" value="330"><span class="val" id="payW-v">330</span></div></div>
+    <div class="ctrl"><label>Alçada botó COBRAR</label><div class="row"><input type="range" id="cobH" min="60" max="320" value="180"><span class="val" id="cobH-v">180</span></div></div>
+    <div class="ctrl"><label>Mida lletra "COBRAR"</label><div class="row"><input type="range" id="cobFont" min="18" max="60" value="38"><span class="val" id="cobFont-v">38</span></div></div>
+    <div class="ctrl"><label>Logo de fons al botó COBRAR</label><div class="seg" id="cobLogo"><button data-v="si" class="on">Sí</button><button data-v="no">No</button></div></div>
+    <div class="ctrl"><label>Mida del logo al botó</label><div class="row"><input type="range" id="cobLogoSize" min="30" max="95" value="70"><span class="val" id="cobLogoSize-v">70</span>%</div></div>
+    <div class="ctrl"><label>Botons de descompte (-10/-20/-50)</label><div class="seg" id="descBtns"><button data-v="si" class="on">Mostrar</button><button data-v="no">Amagar</button></div></div>
+    <div class="ctrl"><label>Botó "Cobrar amb canvi"</label><div class="seg" id="cambioBtn"><button data-v="si" class="on">Mostrar</button><button data-v="no">Amagar</button></div></div>
+    <div class="ctrl"><label>Mida total (€)</label><div class="row"><input type="range" id="totalFont" min="22" max="60" value="40"><span class="val" id="totalFont-v">40</span></div></div>
+
+    <h2>⚙️ General</h2>
+    <div class="ctrl"><label>Separació entre elements</label><div class="row"><input type="range" id="gap" min="4" max="20" value="12"><span class="val" id="gap-v">12</span></div></div>
+  </div>
+
+  <div class="preview-wrap">
+    <div class="screen" id="screen">
+      <div class="screen-logo"><img src="img/logo-web.png" alt="" id="bg-logo"></div>
+      <div class="s-top" id="s-top">
+        <img src="img/logo-web.png" alt="">
+        <span>Gelateria de Roses</span>
+        <span class="sp"></span>
+        <span class="b">💶 Obrir calaix</span>
+        <span class="b" style="background:#ffffff22;color:#fff">Admin</span>
+      </div>
+      <div class="s-body" id="s-body"></div>
+    </div>
+  </div>
+</div>
+
+<div class="code-out" id="code-out">
+  <div class="code-box">
+    <h3>✅ Disseny desat!</h3>
+    <p>Aquesta és la teva configuració. Copia-la (o fes captura) i passa-l'hi al Claude perquè generi el POS amb aquest disseny exacte.</p>
+    <pre id="code-text"></pre>
+    <button onclick="copiar()">📋 Copiar configuració</button>
+    <button onclick="document.getElementById('code-out').style.display='none'" style="background:#eef6f7;color:var(--txt);margin-left:8px">Tancar</button>
+  </div>
+</div>
+
+<script>
+const CATS = [
+  {n:'GELAT', c:'#E8D53A'}, {n:'GRANITZAT', c:'#3B6FD4'}, {n:'MILKSHAKE', c:'#D93A2B'},
+  {n:'CREPES', c:'#D98E3A'}, {n:'GOFRES', c:'#7B3FD4'}, {n:'BEGUDES', c:'#4ECDC4'},
+  {n:'EXTRAS', c:'#E8E4DC'}, {n:'POLOS', c:'#E8E4DC'}, {n:'CAFÉ', c:'#3E2418'}, {n:'TAXI', c:'#E8E4DC'}
+];
+const PRODS = [
+  {n:'1 BOLA CONO', p:'3,00 €', c:'#8f9de8'}, {n:'2 BOLAS CONO', p:'4,70 €', c:'#8f9de8'},
+  {n:'3 BOLAS CONO', p:'5,70 €', c:'#8f9de8'}, {n:'4 BOLAS CONO', p:'6,70 €', c:'#8f9de8'},
+  {n:'SOFT S', p:'3,00 €', c:'#5fd0d0'}, {n:'SOFT M', p:'4,70 €', c:'#5fd0d0'},
+  {n:'SOFT L', p:'5,70 €', c:'#5fd0d0'}, {n:'1 BOLA TARRINA', p:'3,00 €', c:'#e8e23a'},
+  {n:'DANES 2 BOLAS', p:'5,50 €', c:'#7ec83a'}, {n:'POREX 1/2', p:'9,00 €', c:'#c86fd4'},
+  {n:'1 BOLA EXTRA', p:'3,50 €', c:'#e13ad4'}, {n:'crocanti soft S', p:'3,50 €', c:'#a8a83a'}
+];
+const LISTA = [
+  {n:'1 BOLA CONO', q:1, p:'3,00 €'}, {n:'2 BOLAS CONO', q:1, p:'4,70 €'},
+  {n:'3 BOLAS CONO', q:1, p:'5,70 €'}, {n:'SOFT S', q:1, p:'3,00 €'}
+];
+
+const cfg = {
+  scrW:1920, scrH:1080,
+  bgColor:'#009CA6', cobColor:'#17a67a', bgLogoOp:8,
+  catW:300, catCols:2, catH:135, catFont:22, catRadius:20, catStretch:'si',
+  prodW:170, prodH:120, prodFont:17, prodRadius:16,
+  ticketPos:'dreta', payW:330, cobH:180, cobFont:38, cobLogo:'si', cobLogoSize:70,
+  descBtns:'si', cambioBtn:'si', totalFont:40,
+  gap:12
+};
+
+function render() {
+  const s = document.getElementById('screen');
+  s.style.width = cfg.scrW/1.4 + 'px';
+  s.style.height = cfg.scrH/1.4 + 'px';
+  s.style.background = cfg.bgColor;
+  document.getElementById('s-top').style.background = shade(cfg.bgColor, -0.2);
+  const bgl = document.getElementById('bg-logo');
+  bgl.style.opacity = cfg.bgLogoOp/100;
+  bgl.style.width = '42%';
+
+  const body = document.getElementById('s-body');
+  body.style.gap = cfg.gap + 'px';
+  body.style.padding = cfg.gap + 'px';
+
+  // Construir columnas según posición del tiquet
+  const catsHTML = `<div class="col-cats" id="pv-cats"></div>`;
+  const searchHTML = `<div class="searchbar" style="border-radius:10px;height:44px;padding:0 16px;font-size:15px;margin-bottom:${cfg.gap}px">🔍 Cerca un producte…</div>`;
+  const prodsHTML = `<div class="prods" id="pv-prods"></div>`;
+  const listHTML = `
+    <div class="pay-head">🧾 TIQUET</div>
+    <div class="pay-list" id="pv-list"></div>
+    <div class="pay-total"><span class="l">TOTAL</span><span class="v" id="pv-total">17,50 €</span></div>`;
+  const descHTML = cfg.descBtns==='si' ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px 10px 0"><div style="background:var(--gold);color:#3a2a00;padding:9px;border-radius:8px;text-align:center;font-weight:800;font-size:13px">Sense</div><div style="background:#eef6f7;padding:9px;border-radius:8px;text-align:center;font-weight:800;font-size:13px">-10%</div><div style="background:#eef6f7;padding:9px;border-radius:8px;text-align:center;font-weight:800;font-size:13px">-20%</div><div style="background:#eef6f7;padding:9px;border-radius:8px;text-align:center;font-weight:800;font-size:13px">-50%</div></div>` : '';
+  const cobrarHTML = `
+    <div class="btn-cobrar" id="pv-cobrar"><div class="logo-bg" id="cob-logo-bg"><img src="img/logo-web.png" alt=""></div><span>COBRAR</span></div>
+    <div class="btn-cambio" id="pv-cambio">💵 Cobrar amb canvi</div>`;
+
+  if (cfg.ticketPos === 'dreta') {
+    body.innerHTML = catsHTML +
+      `<div class="col-center">${searchHTML}${prodsHTML}</div>` +
+      `<div class="col-pay" id="pv-pay">${descHTML}${listHTML}${cobrarHTML}</div>`;
+  } else {
+    // tiquet a dalt (horizontal)
+    body.innerHTML = catsHTML +
+      `<div class="col-center">
+        <div style="background:#fff;border-radius:10px;height:150px;margin-bottom:${cfg.gap}px;display:flex;flex-direction:column;overflow:hidden;flex-shrink:0">
+          <div class="pay-head">🧾 PRODUCTES</div>
+          <div class="pay-list" id="pv-list" style="display:flex;gap:8px;overflow:hidden"></div>
+        </div>
+        ${searchHTML}${prodsHTML}
+      </div>` +
+      `<div class="col-pay" id="pv-pay">${descHTML}
+        <div class="pay-total"><span class="l">TOTAL</span><span class="v" id="pv-total">17,50 €</span></div>
+        ${cobrarHTML}</div>`;
+  }
+
+  // menús
+  const cats = document.getElementById('pv-cats');
+  cats.style.width = cfg.catW + 'px';
+  cats.style.gridTemplateColumns = `repeat(${cfg.catCols}, 1fr)`;
+  cats.style.gap = cfg.gap + 'px';
+  cats.style.gridAutoRows = cfg.catStretch==='si' ? '1fr' : cfg.catH + 'px';
+  if (cfg.catStretch==='si') cats.style.height = '100%';
+  cats.innerHTML = CATS.map(c => `<div class="cat" style="background:${c.c};font-size:${cfg.catFont}px;border-radius:${cfg.catRadius}px">${c.n}</div>`).join('');
+
+  // productos
+  const prods = document.getElementById('pv-prods');
+  prods.style.gridTemplateColumns = `repeat(auto-fill, minmax(${cfg.prodW}px, 1fr))`;
+  prods.style.gridAutoRows = cfg.prodH + 'px';
+  prods.style.gap = cfg.gap + 'px';
+  prods.innerHTML = PRODS.map(p => `<div class="prod" style="background:${p.c};border-radius:${cfg.prodRadius}px;padding:${Math.max(8,cfg.gap)}px"><div class="n" style="font-size:${cfg.prodFont}px">${p.n}</div><div class="p" style="font-size:${cfg.prodFont+3}px">${p.p}</div></div>`).join('');
+
+  // columna cobro
+  document.getElementById('pv-pay').style.width = cfg.payW + 'px';
+  document.getElementById('pv-pay').style.borderRadius = '12px';
+
+  // lista
+  if (cfg.ticketPos === 'dreta') {
+    document.getElementById('pv-list').innerHTML = LISTA.map(l =>
+      `<div class="pl-row" style="font-size:14px"><span class="n">${l.n}</span><span class="q">${l.q}</span><span class="pr">${l.p}</span></div>`
+    ).join('');
+  } else {
+    document.getElementById('pv-list').innerHTML = LISTA.map(l =>
+      `<div style="background:#eef6f7;border-radius:8px;padding:8px 10px;min-width:120px;flex-shrink:0"><div style="font-weight:700;font-size:12px">${l.n}</div><div style="font-weight:800;color:var(--p320-dk);font-size:13px;margin-top:4px">${l.q} · ${l.p}</div></div>`
+    ).join('');
+  }
+  document.getElementById('pv-total').style.fontSize = cfg.totalFont + 'px';
+
+  // botón cobrar
+  const cob = document.getElementById('pv-cobrar');
+  cob.style.height = cfg.cobH + 'px';
+  cob.style.borderRadius = '14px';
+  cob.style.background = cfg.cobColor;
+  cob.querySelector('span').style.fontSize = cfg.cobFont + 'px';
+  const clb = document.getElementById('cob-logo-bg');
+  clb.style.display = cfg.cobLogo === 'si' ? 'flex' : 'none';
+  clb.style.opacity = '0.18';
+  clb.querySelector('img').style.width = cfg.cobLogoSize + '%';
+  const camb = document.getElementById('pv-cambio');
+  camb.style.display = cfg.cambioBtn === 'si' ? 'flex' : 'none';
+  camb.style.height = '44px'; camb.style.borderRadius = '10px';
+}
+
+function shade(hex, p) {
+  const n = parseInt(hex.slice(1), 16);
+  let r = (n>>16)&255, g = (n>>8)&255, b = n&255;
+  r = Math.round(r*(1+p)); g = Math.round(g*(1+p)); b = Math.round(b*(1+p));
+  r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
+  return '#' + ((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+}
+
+// Sliders numéricos
+['scrW','scrH','bgLogoOp','catW','catH','catFont','catRadius','prodW','prodH','prodFont','prodRadius','payW','cobH','cobFont','cobLogoSize','totalFont','gap'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => { cfg[id] = +el.value; document.getElementById(id+'-v').textContent = el.value; render(); });
+});
+// Colores
+['bgColor','cobColor'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => { cfg[id] = el.value; render(); });
+});
+// Segmentos
+function seg(id, key, isNum) {
+  document.querySelectorAll('#'+id+' button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#'+id+' button').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      cfg[key] = isNum ? +b.dataset.v : b.dataset.v;
+      render();
+    });
+  });
+}
+seg('catCols','catCols',true); seg('catStretch','catStretch'); seg('ticketPos','ticketPos');
+seg('cobLogo','cobLogo'); seg('descBtns','descBtns'); seg('cambioBtn','cambioBtn');
+
+function resetear() {
+  Object.assign(cfg, { scrW:1920, scrH:1080, bgColor:'#009CA6', cobColor:'#17a67a', bgLogoOp:8, catW:300, catCols:2, catH:135, catFont:22, catRadius:20, catStretch:'si', prodW:170, prodH:120, prodFont:17, prodRadius:16, ticketPos:'dreta', payW:330, cobH:180, cobFont:38, cobLogo:'si', cobLogoSize:70, descBtns:'si', cambioBtn:'si', totalFont:40, gap:12 });
+  location.reload();
+}
+
+function exportar() {
+  document.getElementById('code-text').textContent = 'CONFIGURACIÓ POS GELATERIA:\n' + JSON.stringify(cfg, null, 2);
+  document.getElementById('code-out').style.display = 'flex';
+}
+function copiar() {
+  navigator.clipboard.writeText(document.getElementById('code-text').textContent);
+  alert('Configuració copiada! Passa-l\'hi al Claude.');
+}
+
+render();
+</script>
+</body>
+</html>

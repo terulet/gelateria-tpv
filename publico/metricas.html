@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mètriques · La Gelateria de Roses</title>
+  <link rel="stylesheet" href="metricas.css">
+</head>
+<body>
+  <div class="bg-logo"><img src="img/logo-web.png" alt=""></div>
+
+  <main class="wrap">
+    <section id="login" class="login card">
+      <img class="logo" src="img/logo-web.png" alt="La Gelateria de Roses">
+      <h1>Panel de mètriques</h1>
+      <p>Accés ràpid només lectura</p>
+      <form id="pinForm">
+        <input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" placeholder="PIN" autocomplete="off" autofocus>
+        <button type="submit">Entrar</button>
+      </form>
+      <div id="loginError" class="error"></div>
+      <small>Per Tailscale: obre <b>/metricas.html</b> al mòbil.</small>
+    </section>
+
+    <section id="panel" class="hidden">
+      <header class="top">
+        <div>
+          <h1>La Gelateria de Roses</h1>
+          <p id="subtitulo">Mètriques d'avui</p>
+        </div>
+        <button id="logoutBtn" class="ghost">Sortir</button>
+      </header>
+
+      <div class="toolbar card">
+        <input id="fecha" type="date">
+        <button id="refreshBtn">Actualitzar</button>
+      </div>
+
+      <div id="estado" class="estado"></div>
+
+      <section class="grid cards-resumen">
+        <article class="card stat main"><span>Total avui</span><strong id="total">0,00 €</strong></article>
+        <article class="card stat"><span>Tiquets</span><strong id="tickets">0</strong></article>
+        <article class="card stat"><span>Tiquet mig</span><strong id="ticketMedio">0,00 €</strong></article>
+        <article class="card stat"><span>Clients</span><strong id="clientes">0</strong></article>
+        <article class="card stat"><span>Efectiu</span><strong id="efectivo">0,00 €</strong></article>
+        <article class="card stat"><span>Targeta</span><strong id="tarjeta">0,00 €</strong></article>
+      </section>
+
+      <section class="card">
+        <div class="section-head"><h2>Hora forta</h2><span id="mejorHora">—</span></div>
+        <div id="horas" class="bars"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-head"><h2>Top productes</h2><span id="unidades">0 uts</span></div>
+        <div id="productos" class="list"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-head"><h2>Últims tiquets</h2><span id="actualizado">—</span></div>
+        <div id="ultimas" class="list compact"></div>
+      </section>
+    </section>
+  </main>
+
+  <script src="metricas.js"></script>
+</body>
+</html>

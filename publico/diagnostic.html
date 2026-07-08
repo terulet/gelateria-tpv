@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<title>Diagnòstic POS</title>
+<style>
+  body { font-family: monospace; background: #111; color: #0f0; padding: 20px; font-size: 15px; line-height: 1.6; }
+  .ok { color: #0f0; }
+  .err { color: #f44; }
+  .warn { color: #fa0; }
+  h2 { color: #fff; border-bottom: 1px solid #444; padding-bottom: 6px; }
+  pre { background: #000; padding: 12px; border-radius: 6px; overflow-x: auto; color: #8cf; }
+  button { padding: 12px 20px; font-size: 16px; background: #0a6; color: #fff; border: none; border-radius: 6px; cursor: pointer; margin: 8px 0; }
+</style>
+</head>
+<body>
+<h2>🔍 Diagnòstic del POS</h2>
+<p>Aquesta pàgina prova cada pas i mostra on falla. Fes captura del resultat.</p>
+<button onclick="diagnostico()">▶ Executar diagnòstic</button>
+<div id="salida"></div>
+
+<script>
+const out = document.getElementById('salida');
+function log(msg, tipo='ok') {
+  const div = document.createElement('div');
+  div.className = tipo;
+  div.innerHTML = msg;
+  out.appendChild(div);
+}
+function pre(obj) {
+  const p = document.createElement('pre');
+  p.textContent = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+  out.appendChild(p);
+}
+
+async function diagnostico() {
+  out.innerHTML = '';
+  log('=== INICI DEL DIAGNÒSTIC ===', 'warn');
+
+  // 1. Login
+  log('<br>1) Provant login admin/admin...');
+  let token;
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin' })
+    });
+    const d = await r.json();
+    if (d.token) {
+      token = d.token;
+      log('✅ Login OK. Rol: ' + d.rol, 'ok');
+    } else {
+      log('❌ Login FALLA: ' + JSON.stringify(d), 'err');
+      return;
+    }
+  } catch (e) {
+    log('❌ Error de connexió al login: ' + e.message, 'err');
+    return;
+  }
+
+  // 2. Pedir admin/hoy CON token
+  log('<br>2) Provant /api/admin/hoy amb token...');
+  try {
+    const r = await fetch('/api/admin/hoy', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    log('   Estat HTTP: ' + r.status);
+    const d = await r.json();
+    if (r.status === 200) {
+      log('✅ /admin/hoy respon correctament', 'ok');
+      pre(d);
+    } else {
+      log('❌ /admin/hoy FALLA amb estat ' + r.status, 'err');
+      pre(d);
+    }
+  } catch (e) {
+    log('❌ Error: ' + e.message, 'err');
+  }
+
+  // 3. Pedir métricas
+  log('<br>3) Provant /api/admin/metriques...');
+  try {
+    const r = await fetch('/api/admin/metriques', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    log('   Estat HTTP: ' + r.status);
+    const d = await r.json();
+    if (r.status === 200) {
+      log('✅ Mètriques OK. Clients avui: ' + (d.clients ? d.clients.dia : '?'), 'ok');
+    } else {
+      log('❌ Mètriques FALLA: ' + JSON.stringify(d), 'err');
+    }
+  } catch (e) {
+    log('❌ Error: ' + e.message, 'err');
+  }
+
+  // 4. Verificar versión de app.js
+  log('<br>4) Verificant versió de app.js...');
+  try {
+    const r = await fetch('/app.js');
+    const txt = await r.text();
+    log('   Mida de app.js: ' + txt.length + ' caràcters');
+    log('   Té "safeTab": ' + (txt.includes('safeTab') ? '✅ SÍ (versió nova)' : '❌ NO (versió vella)'), txt.includes('safeTab') ? 'ok' : 'err');
+    log('   Té "modalNouProducte": ' + (txt.includes('modalNouProducte') ? '✅ SÍ' : '❌ NO'), txt.includes('modalNouProducte') ? 'ok' : 'err');
+    log('   Té "renderMetriques": ' + (txt.includes('renderMetriques') ? '✅ SÍ' : '❌ NO'), txt.includes('renderMetriques') ? 'ok' : 'err');
+  } catch (e) {
+    log('❌ Error llegint app.js: ' + e.message, 'err');
+  }
+
+  log('<br>=== FI DEL DIAGNÒSTIC ===', 'warn');
+  log('Fes una captura de tot això i passa-l\'hi al Claude.', 'warn');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+ARREGLO IMPRESORA / CAJON - La Gelateria
+=========================================
+
+Cambio realizado:
+- Antes el TPV imprimia con \\localhost\\TIQUETS.
+- Eso solo funciona si la impresora esta compartida en Windows.
+- En este TPV la Posiflex PP-8803 va por USB y NO esta compartida.
+
+Ahora:
+- El TPV busca la impresora TIQUETS en Windows.
+- Lee su puerto real, por ejemplo USB004.
+- Envia el ticket ESC/POS directo a ese puerto.
+- El cajon se abre por la impresora con el cable RJ11.
+
+Uso:
+1. Sustituir la carpeta POS-Gelateria-USB por esta version.
+2. Abrir INICIAR-POS.bat.
+3. En Config, comprobar que el nombre de impresora Windows es exactamente: TIQUETS
+4. Probar "Imprimir tiquet de prova".
+5. Probar "Provar obrir calaix".
+
+Si Windows cambia el puerto USB004 a USB005, el codigo lo detecta automaticamente.
