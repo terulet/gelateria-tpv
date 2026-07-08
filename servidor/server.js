@@ -658,7 +658,7 @@ app.get('/api/metricas/resumen', authMetricas, (req, res) => {
     WHERE v.dia_operativo = ? AND v.estado != 'anulada'
     GROUP BY vl.nombre
     ORDER BY unidades DESC, total DESC
-    LIMIT 20
+    LIMIT 1000
   `).all(dia);
 
   const porCategoria = db.prepare(`

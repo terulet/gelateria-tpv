@@ -74,9 +74,16 @@ function render(d){
     return `<div class="barrow"><span>${x.hora}:00</span><div class="barbg"><div class="bar" style="width:${pct}%"></div></div><span class="money">${eur(x.total)}</span></div>`;
   }).join('') : '<div class="row"><b>Sense vendes encara</b><span></span></div>';
 
-  $('productos').innerHTML = (d.porProducto||[]).length ? d.porProducto.slice(0,12).map((p,i)=>
-    `<div class="row"><div><b>${i+1}. ${escapeHtml(p.nombre)}</b><br><small>${p.unidades||0} unitats</small></div><div class="right">${eur(p.total)}</div></div>`
-  ).join('') : '<div class="row"><b>Sense productes encara</b><span></span></div>';
+  $('productos').innerHTML = (d.porProducto||[]).length ?
+    `<div class="table-scroll"><table>
+      <thead><tr><th>Producte</th><th class="center">Unitats</th><th class="right">€</th></tr></thead>
+      <tbody>
+      ${d.porProducto.map((p,i)=>
+        `<tr><td><b>${i+1}. ${escapeHtml(p.nombre)}</b></td><td class="center">${p.unidades||0}</td><td class="right">${eur(p.total)}</td></tr>`
+      ).join('')}
+      </tbody>
+    </table></div>`
+    : '<div class="row"><b>Sense productes encara</b><span></span></div>';
 
   $('ultimas').innerHTML = (d.ultimas||[]).length ? d.ultimas.map(t =>
     `<div class="row"><span class="badge">#${t.id}</span><div><b>${hora(t.fecha)}</b><br><small>${escapeHtml(t.trabajador || '—')} · ${escapeHtml(t.metodo_pago || '')}${t.estado && t.estado !== 'activa' ? ' · '+escapeHtml(t.estado) : ''}</small></div><div class="right">${eur(t.total)}</div></div>`
