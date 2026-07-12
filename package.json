@@ -1,58 +1,9 @@
 {
   "name": "pos-gelateria-roses",
-  "version": "1.0.0",
-  "description": "TPV propio para La Gelateria de Roses",
+  "version": "4.0.0",
+  "description": "TPV La Gelateria de Roses con FLAMA Update OTA",
   "main": "electron/main.js",
-  "scripts": {
-    "dev-server": "node servidor/server.js",
-    "start": "electron .",
-    "check-sqlite": "electron check-sqlite.js",
-    "dist": "npm run check-sqlite && electron-builder --win nsis",
-    "dist-portable": "npm run check-sqlite && electron-builder --win portable"
-  },
   "dependencies": {
     "express": "^4.22.2"
-  },
-  "devDependencies": {
-    "electron": "^42.0.0",
-    "electron-builder": "^25.1.8"
-  },
-  "build": {
-    "appId": "com.lagelateria.pos",
-    "productName": "POS Gelateria",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "electron/**/*",
-      "servidor/**/*",
-      "publico/**/*",
-      "check-sqlite.js"
-    ],
-    "asar": true,
-    "asarUnpack": [
-      "servidor/rawprint-worker.ps1"
-    ],
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "signAndEditExecutable": false
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": true,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "POS Gelateria",
-      "artifactName": "POS-Gelateria-Setup.${ext}"
-    },
-    "forceCodeSigning": false
   }
 }

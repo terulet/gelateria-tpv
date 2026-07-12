@@ -1,0 +1,9 @@
+{
+  "appId": "com.lagelateria.tpv",
+  "name": "TPV Gelateria",
+  "version": "4.0.0",
+  "updateSystem": "FLAMA Update v1.0.0",
+  "appAsarSha256": "8939c40f517ddf60bf0085e4f1ab90e250a7b92b1fb29b5de6d642d40f35a930",
+  "appAsarSize": 4057562,
+  "builtAt": "2026-07-12T10:44:30Z"
+}

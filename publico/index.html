@@ -297,7 +297,7 @@
     <button class="btn-top cajon" onclick="abrirCajon()">💶 Obrir calaix</button>
     <button class="btn-top hidden" id="btn-reordenar" onclick="toggleReordenar()">↕️ Reordenar</button>
     <button class="btn-top hidden" id="btn-admin" onclick="mostrarAdmin()">⚙️ Admin</button>
-    <button class="btn-top hidden" id="btn-volver" onclick="mostrarCobro()">← Vendre</button>
+    <button class="btn-top hidden" id="btn-volver" onclick="mostrarCobro()">← Staff</button>
     <div class="chip" id="chip-user">—</div>
     <button class="btn-top" onclick="minimitzar()" title="Minimitzar">➖</button>
     <button class="btn-top" onclick="confirmarSortir()">Sortir</button>
@@ -334,7 +334,8 @@
         <button class="desc-btn on" data-d="0" onclick="setDesc(0)">Sense</button>
         <button class="desc-btn" data-d="10" onclick="setDesc(10)">-10%</button>
         <button class="desc-btn" data-d="20" onclick="setDesc(20)">-20%</button>
-        <button class="desc-btn desc-50" data-d="50" onclick="setDesc(50)">"50% solo staff"</button>
+        <button class="desc-btn desc-50" data-d="50" data-tipo="staff" onclick="activarStaff50()">STAFF 50% · máx. 2</button>
+        <button class="desc-btn desc-50" data-d="50" data-tipo="familia" onclick="activarFamilia50()">FAMILIA 50%</button>
         <button class="btn-fidelitat" id="btn-fidelitat" onclick="toggleFidelitat()">🎁 FIDELITAT −3€</button>
         <button class="btn-acc" onclick="abrirMultiplicador()">✖️ Multi <span class="mult hidden" id="mult-badge"></span></button>
         <button class="btn-acc" onclick="abrirCalculadora()">🧮 Calc.</button>

@@ -1,5 +1,5 @@
 // ============================================================
-//  POS La Gelateria de Roses — Frontend v3 (layout ràpid)
+//  POS La Gelateria de Roses — Frontend v4 + FLAMA Update
 // ============================================================
 
 let TOKEN = null, ROL = null, USER = null;
@@ -7,6 +7,9 @@ let catalogo = { categorias: [], productos: [] };
 let catActiva = null;
 let ticket = [];          // { producto_id, nombre, precio, cantidad, color }
 let descuento = 0;
+let descuentoTipo = 'ninguno'; // ninguno | normal | staff | familia
+let descuentoFamiliar = null;
+let descuentoTrabajador = null;
 let fidelitat = false;   // premio fidelitat: resta 3€
 const PREMI_FIDELITAT = 3;
 let trabajadores = [];
@@ -44,6 +47,7 @@ let busqueda = '';
 
 const $ = s => document.querySelector(s);
 const euro = n => (n || 0).toFixed(2).replace('.', ',') + ' €';
+const esc = s => String(s ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c]));
 
 async function api(ruta, opciones = {}) {
   const headers = { 'Content-Type': 'application/json' };
@@ -55,6 +59,33 @@ async function api(ruta, opciones = {}) {
   }
   return res.json();
 }
+
+// ---------- FLAMA UPDATE: estado seguro del TPV ----------
+// El agente externo consulta este heartbeat antes de reiniciar. Nunca considera
+// seguro actualizar si hay productos en el ticket o un modal de cobro abierto.
+function flamaTicketItems() {
+  return ticket.reduce((total, linea) => total + (Number(linea.cantidad) || 0), 0);
+}
+function flamaPantallaActual() {
+  if ($('#admin')?.classList.contains('show')) return 'admin';
+  if ($('#cobro')?.style.display !== 'none') return 'venta';
+  if ($('#login')?.style.display !== 'none') return 'login';
+  return 'tpv';
+}
+async function enviarHeartbeatFlama() {
+  if (!TOKEN) return;
+  try {
+    await api('/update/heartbeat', {
+      method: 'POST',
+      body: JSON.stringify({
+        ticketItems: flamaTicketItems(),
+        overlayOpen: Boolean(document.querySelector('.overlay')),
+        screen: flamaPantallaActual(),
+      }),
+    });
+  } catch (_) { /* nunca interrumpir una venta por telemetría */ }
+}
+setInterval(enviarHeartbeatFlama, 15000);
 
 setInterval(() => {
   const d = new Date(), r = $('#reloj');
@@ -466,6 +497,7 @@ function limpiarBusqueda(silent) { busqueda = ''; actualizarBuscadorUI(); if (!s
 
 // ---------- TICKET (arriba horizontal) ----------
 function agregarAlTicket(prod) {
+  cerrarUltimoCobro();
   const cant = multiplicador;
   const existe = ticket.find(l => l.producto_id === prod.id);
   if (existe) existe.cantidad += cant;
@@ -510,18 +542,23 @@ function renderTicket() {
   });
 
   // Líneas de descuento y fidelitat como filas visibles (con ✕ para quitarlas)
-  let total = bruto * (1 - descuento / 100);
-  if (descuento > 0) {
-    const impDesc = bruto * (descuento / 100);
+  const calcDesc = calcularDescuentoTicket();
+  let total = bruto - calcDesc.importe;
+  if (calcDesc.importe > 0) {
     const div = document.createElement('div');
     div.className = 'titem desc-line';
+    const etiqueta = descuentoTipo === 'staff'
+      ? 'STAFF -50% · 2 unidades más caras'
+      : descuentoTipo === 'familia'
+        ? `FAMILIA -50% · ${esc(descuentoFamiliar || '')}`
+        : `Descompte -${descuento}%`;
     div.innerHTML = `
       <button class="tdel">✕</button>
       <div class="tcol" style="background:var(--amber)"></div>
-      <div class="tn" style="color:#8a6d00">Descompte -${descuento}%${descuento===50 ? ' (staff)' : ''}</div>
+      <div class="tn" style="color:#8a6d00">${etiqueta}</div>
       <div class="tq"></div>
       <div class="tpr"></div>
-      <div class="ts" style="color:#c0392b">-${euro(impDesc)}</div>`;
+      <div class="ts" style="color:#c0392b">-${euro(calcDesc.importe)}</div>`;
     div.querySelector('.tdel').onclick = () => setDesc(0);
     cont.appendChild(div);
   }
@@ -554,11 +591,68 @@ function limpiarTicket() {
   $('#mult-badge').classList.add('hidden');
   renderTicket();
 }
+function calcularDescuentoTicket() {
+  const bruto = ticket.reduce((s, l) => s + Number(l.precio || 0) * Number(l.cantidad || 0), 0);
+  if (descuentoTipo === 'staff') {
+    const unidades = [];
+    ticket.forEach((l, lineaIdx) => {
+      for (let i = 0; i < Number(l.cantidad || 0); i++) unidades.push({ lineaIdx, precio: Number(l.precio || 0), nombre: l.nombre });
+    });
+    unidades.sort((a, b) => b.precio - a.precio);
+    const seleccionadas = unidades.slice(0, 2);
+    return { importe: seleccionadas.reduce((s, u) => s + u.precio * 0.5, 0), seleccionadas };
+  }
+  if (descuentoTipo === 'familia') return { importe: bruto * 0.5, seleccionadas: [] };
+  if (descuento > 0) return { importe: bruto * (descuento / 100), seleccionadas: [] };
+  return { importe: 0, seleccionadas: [] };
+}
+
 function setDesc(pct) {
   descuento = pct;
-  document.querySelectorAll('.desc-btn').forEach(b => b.classList.toggle('on', +b.dataset.d === pct));
+  descuentoTipo = pct > 0 ? 'normal' : 'ninguno';
+  descuentoFamiliar = null; descuentoTrabajador = null;
+  document.querySelectorAll('.desc-btn').forEach(b => b.classList.toggle('on', +b.dataset.d === pct && !b.dataset.tipo));
   renderTicket();
 }
+
+function activarStaff50() {
+  descuento = 50; descuentoTipo = 'staff'; descuentoFamiliar = null; descuentoTrabajador = null;
+  document.querySelectorAll('.desc-btn').forEach(b => b.classList.remove('on'));
+  const b = document.querySelector('[data-tipo="staff"]'); if (b) b.classList.add('on');
+  renderTicket();
+}
+
+function nombresGuardados(clave) {
+  try { return JSON.parse(localStorage.getItem(clave) || '[]').filter(Boolean); } catch { return []; }
+}
+function guardarNombre(clave, nombre) {
+  const limpio = String(nombre || '').trim(); if (!limpio) return;
+  const lista = nombresGuardados(clave).filter(n => n.toLowerCase() !== limpio.toLowerCase());
+  lista.unshift(limpio); localStorage.setItem(clave, JSON.stringify(lista.slice(0, 50)));
+}
+function pedirDatosFamilia(onOk) {
+  const ov = document.createElement('div'); ov.className = 'overlay';
+  ov.innerHTML = `<div class="modal" style="max-width:650px"><h2>👨‍👩‍👧 FAMILIA · 50%</h2><div class="msub">Escribe o toca un nombre guardado</div>
+    <label style="font-weight:800">Familiar</label><input id="fam-nombre" list="fam-lista" autocomplete="off" style="width:100%;font-size:24px;padding:14px;border:2px solid var(--p320);border-radius:12px;margin:6px 0 14px"><datalist id="fam-lista"></datalist>
+    <label style="font-weight:800">Trabajador</label><input id="fam-trab" list="trab-lista" autocomplete="off" style="width:100%;font-size:24px;padding:14px;border:2px solid var(--p320);border-radius:12px;margin:6px 0 16px"><datalist id="trab-lista"></datalist>
+    <div class="confirm-btns"><button class="btn-conf-cancel" id="fam-cancel">Cancelar</button><button class="btn-conf-ok" id="fam-ok">✓ Aplicar 50%</button></div></div>`;
+  document.body.appendChild(ov);
+  const fams = nombresGuardados('tpv_familia_nombres');
+  const emps = [...new Set([...(trabajadores || []).map(t => t.nombre), ...nombresGuardados('tpv_empleado_nombres')])];
+  ov.querySelector('#fam-lista').innerHTML = fams.map(n => `<option value="${esc(n)}">`).join('');
+  ov.querySelector('#trab-lista').innerHTML = emps.map(n => `<option value="${esc(n)}">`).join('');
+  ov.querySelector('#fam-cancel').onclick = () => ov.remove();
+  ov.querySelector('#fam-ok').onclick = () => {
+    const familiar = ov.querySelector('#fam-nombre').value.trim(); const trabajador = ov.querySelector('#fam-trab').value.trim();
+    if (!familiar || !trabajador) { toast('Falta el nombre del familiar o del trabajador', true); return; }
+    guardarNombre('tpv_familia_nombres', familiar); guardarNombre('tpv_empleado_nombres', trabajador);
+    descuento = 50; descuentoTipo = 'familia'; descuentoFamiliar = familiar; descuentoTrabajador = trabajador; cobroTrabajador = trabajador;
+    document.querySelectorAll('.desc-btn').forEach(b => b.classList.remove('on')); const b=document.querySelector('[data-tipo="familia"]'); if(b)b.classList.add('on');
+    ov.remove(); renderTicket(); if (onOk) onOk();
+  };
+  setTimeout(() => ov.querySelector('#fam-nombre').focus(), 50);
+}
+function activarFamilia50() { pedirDatosFamilia(); }
 function toggleFidelitat() {
   fidelitat = !fidelitat;
   $('#btn-fidelitat').classList.toggle('on', fidelitat);
@@ -646,7 +740,7 @@ function abrirMultiplicador() {
 // ---------- APARCAR ----------
 function aparcarTicket() {
   if (ticket.length === 0) { toast('El tiquet està buit', true); return; }
-  aparcados.push({ id: Date.now(), lineas: JSON.parse(JSON.stringify(ticket)), descuento, hora: new Date().toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit' }) });
+  aparcados.push({ id: Date.now(), lineas: JSON.parse(JSON.stringify(ticket)), descuento, descuentoTipo, descuentoFamiliar, descuentoTrabajador, hora: new Date().toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit' }) });
   ticket = []; setDesc(0); renderTicket(); actualizarAparcadosBtn();
   toast('🎫 Tiquet aparcat');
 }
@@ -667,7 +761,7 @@ function verAparcados() {
     row.innerHTML = `<span>🎫 ${ap.hora} · ${nItems} articles</span><b>${euro(total)}</b>`;
     row.onclick = () => {
       if (ticket.length > 0 && !confirm('Tens un tiquet obert. Es substituirà. Continuar?')) return;
-      ticket = ap.lineas; setDesc(ap.descuento);
+      ticket = ap.lineas; setDesc(ap.descuento); descuentoTipo = ap.descuentoTipo || (ap.descuento ? 'normal' : 'ninguno'); descuentoFamiliar = ap.descuentoFamiliar || null; descuentoTrabajador = ap.descuentoTrabajador || null;
       aparcados.splice(idx, 1); actualizarAparcadosBtn();
       renderTicket(); ov.remove(); toast('Tiquet recuperat');
     };
@@ -730,22 +824,42 @@ function imprimirTiquetGuardat(t) {
 }
 
 let cobroTrabajador = null;
+let ultimoCobroOverlay = null;
+
+function cerrarUltimoCobro() { if (ultimoCobroOverlay) { ultimoCobroOverlay.remove(); ultimoCobroOverlay = null; } }
+function mostrarCobroFinal(total, entregado) {
+  cerrarUltimoCobro();
+  const ov = document.createElement('div'); ov.className = 'overlay';
+  const tieneEntregado = Number.isFinite(Number(entregado)) && Number(entregado) > 0;
+  const cambio = tieneEntregado ? Math.max(0, Number(entregado) - Number(total)) : null;
+  ov.innerHTML = `<div class="modal" style="max-width:520px;text-align:center">
+    <div style="font-size:20px;font-weight:800;color:var(--ok);margin-bottom:6px">✓ COBRAT</div>
+    <div style="font-size:22px;font-weight:700">Total</div>
+    <div style="font-size:64px;font-weight:950;color:var(--p320-dk);line-height:1.05;margin:8px 0 18px">${euro(total)}</div>
+    ${tieneEntregado ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px"><div class="entregado-box"><div class="lbl">Entregat</div><div class="val">${euro(entregado)}</div></div><div class="cambio-box"><div class="lbl">Canvi a tornar</div><div class="val">${euro(cambio)}</div></div></div>` : ''}
+    <button class="btn-conf-ok" id="nou-ticket-ok" style="width:100%">Nou tiquet</button>
+    <div style="margin-top:10px;color:#60777a;font-size:14px">També desapareix en marcar el següent producte</div>
+  </div>`;
+  document.body.appendChild(ov); ultimoCobroOverlay = ov;
+  ov.querySelector('#nou-ticket-ok').onclick = cerrarUltimoCobro;
+}
+
 
 function totalActual() {
   const bruto = ticket.reduce((s, l) => s + l.precio * l.cantidad, 0);
-  let total = bruto * (1 - descuento / 100);
+  let total = bruto - calcularDescuentoTicket().importe;
   if (fidelitat) total = Math.max(0, total - PREMI_FIDELITAT);
-  return total;
+  return +total.toFixed(2);
 }
 
 function cobrarRapido() {
   if (ticket.length === 0) return;
   cobroTrabajador = null;
-  if (descuento === 50) {
+  if (descuentoTipo === 'familia') {
+    if (!descuentoFamiliar || !descuentoTrabajador) pedirDatosFamilia(() => confirmarRapido()); else confirmarRapido();
+  } else if (descuentoTipo === 'staff') {
     pedirNombreTrabajador(() => confirmarRapido());
-  } else {
-    confirmarRapido();
-  }
+  } else confirmarRapido();
 }
 
 function confirmarRapido() {
@@ -755,7 +869,7 @@ function confirmarRapido() {
   ov.innerHTML = `
     <div class="modal" style="max-width:480px">
       <div class="confirm-total">
-        <div class="l">${descuento === 50 ? `Descompte -50% · ${cobroTrabajador}` : 'Total a cobrar'}</div>
+        <div class="l">${descuentoTipo === 'staff' ? `STAFF -50% · ${cobroTrabajador}` : descuentoTipo === 'familia' ? `FAMILIA -50% · ${descuentoFamiliar}` : 'Total a cobrar'}</div>
         <div class="v">${euro(total)}</div>
       </div>
       <div class="confirm-btns">
@@ -772,7 +886,9 @@ function confirmarRapido() {
 function cobrarConCambio() {
   if (ticket.length === 0) return;
   cobroTrabajador = null;
-  if (descuento === 50) pedirNombreTrabajador(() => calculadoraCambio(totalActual()));
+  if (descuentoTipo === 'familia') {
+    if (!descuentoFamiliar || !descuentoTrabajador) pedirDatosFamilia(() => calculadoraCambio(totalActual())); else calculadoraCambio(totalActual());
+  } else if (descuentoTipo === 'staff') pedirNombreTrabajador(() => calculadoraCambio(totalActual()));
   else calculadoraCambio(totalActual());
 }
 
@@ -805,7 +921,7 @@ function pedirNombreTrabajador(onOk) {
   ok.onclick = () => {
     const n = nom.trim();
     if (!n) { toast('Escriu el teu nom', true); return; }
-    cobroTrabajador = n; ov.remove(); onOk();
+    cobroTrabajador = n; descuentoTrabajador = n; guardarNombre('tpv_empleado_nombres', n); ov.remove(); onOk();
   };
   tcont.appendChild(ok);
   $('#nom-cancelar').onclick = () => ov.remove();
@@ -878,9 +994,11 @@ const r = await api('/ventas', {
   body: JSON.stringify({
     lineas,
     descuento_pct: descuento,
-    fidelitat,
-    trabajador: cobroTrabajador,
-    metodo_pago: metodo
+    descuento_tipo: descuentoTipo,
+    familiar: descuentoFamiliar,
+    trabajador: cobroTrabajador || descuentoTrabajador,
+    metodo_pago: metodo,
+    fidelitat
   })
 });
 
@@ -888,6 +1006,7 @@ const r = await api('/ventas', {
 const cajon = await cajonPromise;
 
 limpiarTicket();
+mostrarCobroFinal(r.total, entregado);
 
 if (cajon && cajon.cajon === 'error') {
   toast('✓ Venda guardada · ⚠️ calaix no obert', true);
@@ -944,7 +1063,6 @@ function toast(msg, err) {
 //  PANEL ADMIN
 // ============================================================
 async function mostrarCobro() {
- 
   $('#cobro').style.display = 'flex';
   $('#admin').classList.remove('show');
   $('#admin').style.display = 'none';
@@ -952,31 +1070,45 @@ async function mostrarCobro() {
   $('#btn-admin').classList.remove('hidden');
   $('#btn-volver').classList.add('hidden');
 
-  // IMPORTANTE:
-  // Si has entrado como admin, al volver a caja sigues siendo admin.
-  // Así puedes reordenar menús/productos desde la pantalla de venta.
+  // Al salir de Admin volvemos a modo staff para no dejar permisos abiertos.
   if (ROL === 'admin') {
-    const c = $('#chip-user');
-    if (c) {
-      c.textContent = USER || 'admin';
-      c.className = 'chip admin';
-    }
-
-    $('#btn-reordenar').classList.remove('hidden');
+    await cambiarAModoStaff();
   } else {
-    const c = $('#chip-user');
-    if (c) {
-      c.textContent = 'Caixa';
-      c.className = 'chip';
-    }
-
-    $('#btn-reordenar').classList.add('hidden');
-    modoReordenar = false;
-    document.body.classList.remove('reordenando');
+    pintarModoStaff();
   }
 
+  modoReordenar = false;
+  document.body.classList.remove('reordenando');
   renderCategorias();
   renderProductos();
+}
+
+function pintarModoStaff() {
+  const c = $('#chip-user');
+  if (c) {
+    c.textContent = 'Caixa';
+    c.className = 'chip';
+  }
+  $('#btn-reordenar')?.classList.add('hidden');
+  modoReordenar = false;
+  document.body.classList.remove('reordenando');
+}
+
+async function cambiarAModoStaff() {
+  try {
+    const r = await api('/admin/volver-staff', { method: 'POST' });
+    TOKEN = r.token;
+    ROL = r.rol;
+    USER = r.username;
+    pintarModoStaff();
+    toast('✓ Mode staff activat');
+  } catch (e) {
+    // Si algo falla, no bloqueamos la venta: dejamos visible que sigue en admin.
+    const c = $('#chip-user');
+    if (c) { c.textContent = USER || 'admin'; c.className = 'chip admin'; }
+    $('#btn-reordenar')?.classList.remove('hidden');
+    toast('⚠️ No he pogut tornar a staff: ' + e.message, true);
+  }
 }
 function mostrarAdmin() {
   if (ROL === 'admin') {
@@ -1069,6 +1201,8 @@ async function adminTab(tab) {
       <button class="admin-tab ${tab==='historico'?'on':''}" onclick="adminTab('historico')">📅 Històric</button>
       <button class="admin-tab ${tab==='productos'?'on':''}" onclick="adminTab('productos')">🏷️ Preus</button>
       <button class="admin-tab ${tab==='staff'?'on':''}" onclick="adminTab('staff')">👥 Treballadors</button>
+      <button class="admin-tab ${tab==='backup'?'on':''}" onclick="adminTab('backup')">💾 Backup USB</button>
+      <button class="admin-tab ${tab==='update'?'on':''}" onclick="adminTab('update')">🔄 FLAMA Update</button>
       <button class="admin-tab ${tab==='config'?'on':''}" onclick="adminTab('config')">🔒 Config</button>
     </div>
     <div id="admin-body"><div class="empty">Carregant…</div></div>`;
@@ -1079,6 +1213,8 @@ async function adminTab(tab) {
   else if (tab === 'historico') safeTab(renderHistorico);
   else if (tab === 'productos') safeTab(renderProductosAdmin);
   else if (tab === 'staff') safeTab(renderStaff);
+  else if (tab === 'backup') safeTab(renderBackupUSB);
+  else if (tab === 'update') safeTab(renderFlamaUpdate);
   else if (tab === 'config') safeTab(renderConfig);
 }
 
@@ -1181,9 +1317,13 @@ async function renderMetriques(dia) {
     <tbody>${dowMedias.map(x => `<tr><td style="font-weight:700">${noms[x.dow]}</td><td class="num">${euro(x.mitja)}</td></tr>`).join('') || '<tr><td colspan="2" class="empty">Sense dades</td></tr>'}</tbody></table>
 
     <!-- PRODUCTOS -->
-    <div class="seccion-titulo">🍦 Rànquing de productes (avui)</div>
-    <table><thead><tr><th>Producte</th><th class="num">Unitats</th><th class="num">Facturat</th></tr></thead>
-    <tbody>${d.porProducto.map(p => `<tr><td>${p.nombre}</td><td class="num"><b>${p.unidades}</b></td><td class="num">${euro(p.total)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">Sense vendes</td></tr>'}</tbody></table>`;
+    <div class="seccion-titulo">🍦 Tots els productes venuts (avui)</div>
+    <table><thead><tr><th>Producte</th><th>Categoria</th><th class="num">Unitats</th><th class="num">Tiquets</th><th class="num">Preu mig</th><th class="num">Facturat</th></tr></thead>
+    <tbody>${d.porProducto.map(p => `<tr><td>${esc(p.nombre)}</td><td style="text-transform:uppercase">${esc(p.categoria || '')}</td><td class="num"><b>${p.unidades}</b></td><td class="num">${p.tickets || 0}</td><td class="num">${euro(p.precio_medio || 0)}</td><td class="num">${euro(p.total)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sense vendes</td></tr>'}</tbody></table>
+
+    <div class="seccion-titulo">🧾 Tot el que s'ha marcat (línies de venda)</div>
+    <table><thead><tr><th>Hora</th><th>Tiquet</th><th>Producte</th><th class="num">Unit.</th><th class="num">Preu</th><th class="num">Import</th></tr></thead>
+    <tbody>${(d.lineasVendidas || []).map(l => `<tr><td>${new Date(l.fecha).toLocaleTimeString('ca-ES',{hour:'2-digit',minute:'2-digit'})}</td><td>#${l.ticket_id}</td><td>${esc(l.nombre)}<br><small>${esc(l.categoria || '')}</small></td><td class="num">${l.cantidad}</td><td class="num">${euro(l.precio_unit)}</td><td class="num">${euro(l.subtotal)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sense línies</td></tr>'}</tbody></table>`;
 }
 
 // ============================================================
@@ -1444,22 +1584,41 @@ async function editarLinea(ventaId, lineaId, nuevaCantidad) {
 async function renderCierre() {
   const est = await api('/cierre/estado');
   const b = $('#admin-body');
-  if (!est.cierre) { b.innerHTML = `<div class="card"><div class="k">Estat de la caixa</div><div class="v" style="font-size:22px;margin-bottom:16px">Tancada</div><button class="btn-sm" onclick="abrirCaja()">Obrir caixa nova</button></div>`; return; }
+  if (!est.cierre) {
+    b.innerHTML = `
+      <div class="card">
+        <div class="k">Estat de la caixa</div>
+        <div class="v" style="font-size:22px;margin-bottom:10px">Caixa tancada</div>
+        <p style="color:var(--txt-dim);font-weight:700;margin-bottom:16px">Quan tornis a vendre, el TPV obrirà una caixa nova automàticament. També pots obrir-la ara.</p>
+        <button class="btn-sm" onclick="abrirCaja()">Obrir caixa nova</button>
+      </div>`;
+    return;
+  }
   const c = est.cierre;
   b.innerHTML = `
     <div class="cards">
       <div class="card"><div class="k">Oberta des de</div><div class="v" style="font-size:18px">${new Date(c.abierto_en).toLocaleString('ca-ES')}</div></div>
+      <div class="card"><div class="k">Dia operatiu</div><div class="v" style="font-size:24px">${c.dia_operativo}</div></div>
       <div class="card"><div class="k">Total acumulat</div><div class="v p320">${euro(c.total_ventas)}</div></div>
       <div class="card"><div class="k">Efectiu</div><div class="v">${euro(c.total_efectivo)}</div></div>
       <div class="card"><div class="k">Targeta</div><div class="v">${euro(c.total_tarjeta)}</div></div>
       <div class="card"><div class="k">Tiquets</div><div class="v">${c.num_tickets}</div></div>
     </div>
-    <button class="btn-cerrar-caja" onclick="cerrarCaja()">🌙 Tancar caixa i treure tiquet</button>`;
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:18px">
+      <button class="btn-cerrar-caja" style="background:var(--coral);flex:1;min-width:260px" onclick="cerrarCaja(false)">✅ Caja cerrada<br><small style="font-size:12px;font-weight:800">sense imprimir tiquet</small></button>
+      <button class="btn-cerrar-caja" style="background:var(--p320);flex:1;min-width:260px" onclick="cerrarCaja(true)">🧾 Caja cerrada + imprimir<br><small style="font-size:12px;font-weight:800">treure tiquet de tancament</small></button>
+    </div>`;
 }
 async function abrirCaja() { try { await api('/cierre/abrir', { method: 'POST' }); toast('Caixa oberta'); renderCierre(); } catch (e) { toast('⚠️ ' + e.message, true); } }
-async function cerrarCaja() {
-  if (!confirm('Tancar la caixa? Es generarà el tiquet resum del dia.')) return;
-  try { const r = await api('/cierre/cerrar', { method: 'POST' }); mostrarTiquetCierre(r); toast('✓ Caixa tancada'); }
+async function cerrarCaja(imprimir) {
+  const texto = imprimir ? 'Tancar la caixa i imprimir el tiquet de tancament?' : 'Marcar la caixa com a tancada sense imprimir tiquet?';
+  if (!confirm(texto)) return;
+  try {
+    const r = await api('/cierre/cerrar', { method: 'POST', body: JSON.stringify({ imprimir: !!imprimir }) });
+    mostrarTiquetCierre(r);
+    if (r.impresion && r.impresion.solicitada && !r.impresion.ok) toast('Caixa tancada, però no ha imprès: ' + r.impresion.error, true);
+    else toast(imprimir ? '✓ Caixa tancada i tiquet enviat' : '✓ Caixa tancada');
+  }
   catch (e) { toast('⚠️ ' + e.message, true); }
 }
 function mostrarTiquetCierre(r) {
@@ -1472,11 +1631,15 @@ function mostrarTiquetCierre(r) {
     compHTML = `<div style="text-align:center;margin-bottom:14px;font-weight:800;color:${col}">${signe} ${euro(Math.abs(dif))} vs ${r.comparativa.dia} (${euro(r.comparativa.total)})</div>`;
   }
   const top5 = r.porProducto.slice(0, 5);
+  const impresioHTML = r.impresion && r.impresion.solicitada
+    ? (r.impresion.ok ? '<div style="text-align:center;margin-bottom:12px;font-weight:900;color:#17a67a">🧾 Tiquet de tancament imprès</div>' : `<div style="text-align:center;margin-bottom:12px;font-weight:900;color:#ff5a4d">⚠️ Caixa tancada, però no ha imprès: ${esc(r.impresion.error || '')}</div>`)
+    : '<div style="text-align:center;margin-bottom:12px;font-weight:900;color:#5c7a7e">Sense imprimir tiquet de tancament</div>';
   const ov = document.createElement('div'); ov.className = 'overlay';
   ov.innerHTML = `
     <div class="modal">
       <h2>Tancament de caixa</h2>
       <div class="msub">${c.dia_operativo} · ${new Date(c.cerrado_en || Date.now()).toLocaleString('ca-ES')}</div>
+      ${impresioHTML}
       ${compHTML}
       <div class="cards" style="grid-template-columns:1fr 1fr 1fr">
         <div class="card"><div class="k">Facturació</div><div class="v p320">${euro(c.total_ventas)}</div></div>
@@ -1503,7 +1666,7 @@ function mostrarTiquetCierre(r) {
       ${r.amb_descompte > 0 ? `<div class="seccion-titulo">Descomptes aplicats: ${r.amb_descompte}</div>` : ''}
 
       <div style="display:flex;gap:10px;margin-top:16px">
-        <button class="modal-close" style="flex:1;margin:0" onclick="this.closest('.overlay').remove();adminTab('cierre')">Tancar</button>
+        <button class="modal-close" style="flex:1;margin:0" onclick="tancarResumCierre(this)">Tancar</button>
       </div>
     </div>`;
   document.body.appendChild(ov);
@@ -1764,4 +1927,154 @@ if (new URLSearchParams(location.search).get('preview') === '1') {
   iniciarPreview();
 } else {
   entrarStaffDirecte();
+}
+
+
+
+// ============================================================
+// FLAMA UPDATE v1 — panel administrador del TPV
+// ============================================================
+const FLAMA_PHASES = {
+  idle: 'En espera',
+  checking: 'Buscando actualización…',
+  available: 'Actualización disponible',
+  downloading: 'Descargando y verificando…',
+  ready: 'Preparada para instalar',
+  installing: 'Instalando… el TPV se reiniciará',
+  'up-to-date': 'El TPV está al día',
+  success: 'Última actualización completada',
+  error: 'Error de actualización',
+};
+
+function flamaFecha(valor) {
+  if (!valor) return '—';
+  try { return new Date(valor).toLocaleString('es-ES'); }
+  catch (_) { return String(valor); }
+}
+
+async function renderFlamaUpdate() {
+  const body = $('#admin-body');
+  body.innerHTML = '<div class="empty">Comprobando FLAMA Update…</div>';
+  const d = await api('/admin/update/status');
+  const fase = FLAMA_PHASES[d.phase] || d.phase;
+  const preparada = Boolean(d.pending || d.phase === 'ready');
+  const color = d.phase === 'error' ? 'var(--coral)' : (preparada || d.phase === 'success' ? 'var(--ok)' : 'var(--p320-dk)');
+  const resultat = d.lastResult
+    ? `<div class="card" style="margin-top:16px"><div class="k">Último resultado</div><div style="font-size:17px;font-weight:800;color:${d.lastResult.ok?'var(--ok)':'var(--coral)'}">${d.lastResult.ok?'✅':'⚠️'} ${esc(d.lastResult.message || d.lastResult.action || '')}</div><div class="msub" style="margin-top:6px">${flamaFecha(d.lastResult.finishedAt)}</div></div>`
+    : '';
+  body.innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="k">Versión instalada</div><div class="v p320">v${esc(d.version)}</div></div>
+      <div class="card"><div class="k">Versión disponible</div><div class="v" style="color:${color}">${d.availableVersion ? 'v'+esc(d.availableVersion) : '—'}</div></div>
+      <div class="card"><div class="k">Estado</div><div class="v" style="font-size:20px;color:${color}">${esc(fase)}</div></div>
+      <div class="card"><div class="k">Última comprobación</div><div class="v" style="font-size:17px">${flamaFecha(d.lastCheckAt)}</div></div>
+    </div>
+
+    ${d.error ? `<div class="card" style="border-color:var(--coral);background:#fff1ef;margin-bottom:16px"><b style="color:var(--coral)">⚠️ ${esc(d.error)}</b><div class="msub" style="margin-top:8px">Si el repositorio de actualizaciones aún no se ha creado, este aviso es normal: la v4 sigue funcionando y puede recibir un paquete desde el iPhone.</div></div>` : ''}
+    ${d.notes ? `<div class="card" style="margin-bottom:16px"><div class="k">Cambios de la nueva versión</div><div style="font-size:17px;line-height:1.5;white-space:pre-wrap">${esc(d.notes)}</div></div>` : ''}
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+      <button class="btn-sm" style="padding:16px 24px;font-size:17px" onclick="buscarFlamaUpdate(this)">🔎 Buscar actualización</button>
+      <button class="btn-sm" style="padding:16px 24px;font-size:17px;background:var(--ok)" ${preparada?'':'disabled'} onclick="instalarFlamaAhora()">⬇️ Actualizar ahora</button>
+      <button class="btn-sm" style="padding:16px 24px;font-size:17px;background:var(--coral)" onclick="rollbackFlama()">↩️ Volver a la versión anterior</button>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h2 style="margin-bottom:12px">📱 Control desde el iPhone</h2>
+      <p style="font-size:17px;line-height:1.5">Abre la misma dirección Tailscale que utilizas para las métricas, pero terminada en:</p>
+      <div style="font-size:23px;font-weight:900;color:var(--p320-dk);padding:14px;background:var(--panel-2);border-radius:10px;margin:10px 0">/update.html</div>
+      <p class="msub" style="margin:0">Desde esa página puedes comprobar, cargar e instalar una actualización sin USB ni AnyDesk. Requiere usuario administrador.</p>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom:12px">⚙️ Automatización</h2>
+      <label style="display:flex;gap:12px;align-items:center;font-size:17px;margin:12px 0"><input type="checkbox" ${d.config.autoCheck?'checked':''} onchange="guardarConfigFlama({autoCheck:this.checked})" style="width:25px;height:25px"> Comprobar el canal automáticamente</label>
+      <label style="display:flex;gap:12px;align-items:center;font-size:17px;margin:12px 0"><input type="checkbox" ${d.config.autoDownload?'checked':''} onchange="guardarConfigFlama({autoDownload:this.checked})" style="width:25px;height:25px"> Descargar automáticamente en segundo plano</label>
+      <label style="display:flex;gap:12px;align-items:center;font-size:17px;margin:12px 0"><input type="checkbox" ${d.config.autoInstallWhenClosed?'checked':''} onchange="guardarConfigFlama({autoInstallWhenClosed:this.checked})" style="width:25px;height:25px"> Instalar automáticamente si el TPV está cerrado</label>
+      <label style="display:flex;gap:12px;align-items:center;font-size:17px;margin:12px 0"><input type="checkbox" ${d.config.autoInstallAtCashClose?'checked':''} onchange="guardarConfigFlama({autoInstallAtCashClose:this.checked})" style="width:25px;height:25px"> Instalar automáticamente después de cerrar caja</label>
+      <div class="msub" style="margin-top:14px">Canal: <b>${esc(d.config.manifestUrl || 'sin configurar')}</b></div>
+      <div class="msub">Agente externo: <b>${d.agentInstalled?'✅ instalado':'❌ no instalado'}</b></div>
+    </div>
+    ${resultat}`;
+}
+
+async function buscarFlamaUpdate(btn) {
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Buscando y verificando…';
+  try {
+    await api('/admin/update/check', { method: 'POST', body: '{}' });
+    toast('✓ Comprobación completada');
+  } catch (e) { toast('⚠️ ' + e.message, true); }
+  finally { btn.disabled = false; btn.textContent = original; renderFlamaUpdate().catch(()=>{}); }
+}
+
+async function guardarConfigFlama(patch) {
+  try {
+    await api('/admin/update/config', { method: 'PUT', body: JSON.stringify(patch) });
+    toast('✓ Configuración guardada');
+  } catch (e) { toast('⚠️ ' + e.message, true); renderFlamaUpdate().catch(()=>{}); }
+}
+
+async function instalarFlamaAhora() {
+  if (flamaTicketItems() > 0) {
+    toast('⚠️ Vacía o aparca el ticket antes de actualizar', true);
+    return;
+  }
+  if (document.querySelector('.overlay')) {
+    toast('⚠️ Cierra primero la ventana de cobro', true);
+    return;
+  }
+  if (!confirm('El TPV hará backup, se cerrará, instalará la actualización y volverá a abrirse. ¿Actualizar ahora?')) return;
+  try {
+    await enviarHeartbeatFlama();
+    await api('/admin/update/install', { method: 'POST', body: JSON.stringify({ force: true }) });
+    mostrarFlamaReinicio('Actualización verificada. El TPV se cerrará y volverá a abrirse automáticamente.');
+  } catch (e) { toast('⚠️ ' + e.message, true); }
+}
+
+async function rollbackFlama() {
+  if (flamaTicketItems() > 0) { toast('⚠️ Vacía o aparca el ticket antes de restaurar', true); return; }
+  if (!confirm('Se restaurará el último backup completo del TPV. ¿Continuar?')) return;
+  try {
+    await api('/admin/update/rollback', { method: 'POST', body: '{}' });
+    mostrarFlamaReinicio('Restauración iniciada. El TPV se cerrará y volverá a abrirse.');
+  } catch (e) { toast('⚠️ ' + e.message, true); }
+}
+
+function mostrarFlamaReinicio(texto) {
+  const ov = document.createElement('div'); ov.className = 'overlay';
+  ov.innerHTML = `<div class="modal" style="max-width:520px;text-align:center"><div style="font-size:60px;margin-bottom:14px">🔄</div><h2>FLAMA Update</h2><p style="font-size:18px;line-height:1.5;margin-top:12px">${esc(texto)}</p><p class="msub" style="margin-top:18px">No apagues el ordenador.</p></div>`;
+  document.body.appendChild(ov);
+}
+
+async function tancarResumCierre(btn) {
+  btn.closest('.overlay')?.remove();
+  await adminTab('cierre');
+  await instalarFlamaSiPreparadaTrasCierre();
+}
+
+async function instalarFlamaSiPreparadaTrasCierre() {
+  try {
+    const d = await api('/admin/update/status');
+    if (!d.config.autoInstallAtCashClose || !(d.pending || d.phase === 'ready')) return;
+    await enviarHeartbeatFlama();
+    await api('/admin/update/install', { method: 'POST', body: JSON.stringify({ force: false }) });
+    mostrarFlamaReinicio(`Caja cerrada y actualización v${d.availableVersion || d.pending?.version || ''} preparada. Se instalará ahora con rollback automático.`);
+  } catch (e) { toast('⚠️ Caja cerrada, pero la actualización no pudo iniciarse: ' + e.message, true); }
+}
+
+async function renderBackupUSB() {
+  const body = $('#admin-body');
+  body.innerHTML = `<div class="card" style="max-width:760px;margin:20px auto;padding:28px"><h2>💾 Còpia completa en USB</h2><p style="font-size:18px;line-height:1.5">Aquesta còpia és manual i només per a l'administrador. Guarda dades, vendes, configuració i la versió actual del programa.</p><div id="usb-estat" class="empty">Buscant pendrive…</div><button id="usb-backup-btn" class="btn-conf-ok" style="width:100%;padding:20px;font-size:22px" disabled>Crear còpia completa en USB</button></div>`;
+  try {
+    const e = await api('/admin/backup-usb/estado');
+    const est = $('#usb-estat'), btn = $('#usb-backup-btn');
+    if (e.disponible) { est.innerHTML = `✅ USB detectat: <b>${e.unidad}</b>`; btn.disabled = false; btn.onclick = crearBackupUSB; }
+    else est.innerHTML = `⚠️ ${e.error || 'Connecta un pendrive USB'}`;
+  } catch(e) { $('#usb-estat').textContent = '⚠️ ' + e.message; }
+}
+async function crearBackupUSB() {
+  const btn=$('#usb-backup-btn'), est=$('#usb-estat'); btn.disabled=true; btn.textContent='Copiant… no retiris el USB';
+  try { const r=await api('/admin/backup-usb',{method:'POST',body:'{}'}); est.innerHTML=`✅ Còpia completada a <b>${r.destino}</b><br>Ja pots retirar el USB amb seguretat.`; btn.textContent='Còpia completada'; toast('✓ Backup USB completat'); }
+  catch(e){ est.textContent='⚠️ '+e.message; btn.disabled=false; btn.textContent='Tornar a intentar'; }
 }

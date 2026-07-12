@@ -6,19 +6,33 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
+const { execFile } = require('child_process');
 const { db, hashPass } = require('./db.js');
 const impresora = require('./impresora.js');
+const flamaUpdate = require('./flama-update.js');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(express.json());
+app.use(express.json({ limit: '80mb' }));
 app.use(express.static(path.join(__dirname, '..', 'publico'), {
   etag: false,
   setHeaders: (res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   }
 }));
+
+// Salud pública mínima para que el agente de actualización pueda verificar
+// que el TPV nuevo ha arrancado y que la base de datos responde.
+app.get('/api/health', (_req, res) => {
+  try {
+    db.prepare('SELECT 1 AS ok').get();
+    res.json({ ok: true, appId: flamaUpdate.APP_ID, version: flamaUpdate.APP_VERSION, database: 'ok' });
+  } catch (error) {
+    res.status(503).json({ ok: false, appId: flamaUpdate.APP_ID, version: flamaUpdate.APP_VERSION, database: 'error', error: error.message });
+  }
+});
 
 // ---------- SESIONES SIMPLES (tokens en memoria) ----------
 const sesiones = new Map(); // token -> { username, rol }
@@ -43,16 +57,88 @@ function soloAdmin(req, res, next) {
   next();
 }
 
-// Día operativo actual: el cierre "abierto" o la fecha de hoy
-function diaOperativoActual() {
-  const abierto = db.prepare("SELECT dia_operativo FROM cierres WHERE estado='abierto' ORDER BY id DESC LIMIT 1").get();
-  if (abierto) return abierto.dia_operativo;
-  return new Date().toISOString().slice(0, 10);
-}
+// Día operativo de La Gelateria: empieza cada día a las 10:00.
+// Ejemplo: una venta a las 03:00 cuenta todavía como el día anterior.
+const HORA_CORTE_CAJA = 10;
 
 function cierreAbierto() {
   return db.prepare("SELECT * FROM cierres WHERE estado='abierto' ORDER BY id DESC LIMIT 1").get();
 }
+
+// Fecha local del TPV (no UTC), importante para cierres hechos por la noche/madrugada.
+function fechaLocalYYYYMMDD(fecha = new Date()) {
+  const d = new Date(fecha);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+
+function diaOperativo10H(fecha = new Date()) {
+  const d = new Date(fecha);
+  if (d.getHours() < HORA_CORTE_CAJA) d.setDate(d.getDate() - 1);
+  return fechaLocalYYYYMMDD(d);
+}
+
+function esHoraDeNuevaCaja(fecha = new Date()) {
+  return fecha.getHours() >= HORA_CORTE_CAJA;
+}
+
+function crearCierre(dia, ahoraIso) {
+  const r = db.prepare(`
+    INSERT INTO cierres (dia_operativo, abierto_en, estado) VALUES (?, ?, 'abierto')
+  `).run(dia, ahoraIso);
+  return db.prepare('SELECT * FROM cierres WHERE id = ?').get(r.lastInsertRowid);
+}
+
+function cerrarCierreSilencioso(cierre, ahoraIso) {
+  db.prepare("UPDATE cierres SET estado='cerrado', cerrado_en=? WHERE id=?")
+    .run(ahoraIso, cierre.id);
+}
+
+function asegurarCaja10H(motivo = 'auto', opciones = {}) {
+  const ahoraFecha = new Date();
+  const ahoraIso = ahoraFecha.toISOString();
+  const diaActual = diaOperativo10H(ahoraFecha);
+  const abierto = cierreAbierto();
+
+  if (abierto) {
+    // A partir de las 10:00, si sigue abierta la caja del día anterior,
+    // se cierra sin imprimir y se abre automáticamente la nueva.
+    if (abierto.dia_operativo !== diaActual) {
+      cerrarCierreSilencioso(abierto, ahoraIso);
+      return crearCierre(diaActual, ahoraIso);
+    }
+    return abierto;
+  }
+
+  // Ventas y apertura manual siempre necesitan una caja abierta.
+  if (opciones.abrirSiNoHay) {
+    return crearCierre(diaActual, ahoraIso);
+  }
+
+  // Login/temporizador: si la caja quedó cerrada por la noche, no la reabrimos
+  // antes de las 10:00. A partir de las 10:00, abrimos el nuevo día solo.
+  if (opciones.abrirSiNoHayDesdeLas10 && esHoraDeNuevaCaja(ahoraFecha)) {
+    return crearCierre(diaActual, ahoraIso);
+  }
+
+  return null;
+}
+
+// Día operativo actual: no fuerza reabrir una caja cerrada antes de las 10:00.
+function diaOperativoActual() {
+  const caja = asegurarCaja10H('consulta', { abrirSiNoHayDesdeLas10: true });
+  return caja ? caja.dia_operativo : diaOperativo10H();
+}
+
+function abrirCierreAutomatico(motivo = 'auto') {
+  return asegurarCaja10H(motivo, { abrirSiNoHay: true });
+}
+
+// Mientras el TPV esté abierto, hace el cambio de caja solo al pasar de las 10:00.
+setInterval(() => {
+  try { asegurarCaja10H('temporizador-10h', { abrirSiNoHayDesdeLas10: true }); }
+  catch (e) { console.error('Error en cierre automático 10h:', e); }
+}, 60 * 1000);
 
 // ============================================================
 //  AUTENTICACIÓN
@@ -64,6 +150,9 @@ app.post('/api/login', (req, res) => {
     return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
   }
   const token = nuevoToken(u);
+  // Al entrar, comprueba si toca cambio automático de caja a las 10:00.
+  // Si la caja se cerró de madrugada, no la reabre antes de las 10:00.
+  asegurarCaja10H('login', { abrirSiNoHayDesdeLas10: true });
   res.json({ token, rol: u.rol, username: u.username });
 });
 
@@ -71,6 +160,14 @@ app.post('/api/logout', auth, (req, res) => {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
   sesiones.delete(token);
   res.json({ ok: true });
+});
+
+// Volver desde administración a modo staff sin cerrar el programa.
+app.post('/api/admin/volver-staff', auth, soloAdmin, (req, res) => {
+  const staff = db.prepare("SELECT * FROM usuarios WHERE username = 'staff'").get();
+  if (!staff) return res.status(404).json({ error: 'No existe el usuario staff' });
+  const token = nuevoToken(staff);
+  res.json({ token, rol: staff.rol, username: staff.username });
 });
 
 // ============================================================
@@ -150,7 +247,7 @@ app.delete('/api/trabajadores/:id', auth, soloAdmin, (req, res) => {
 //  COBRAR (venta) — el flujo rápido del staff
 // ============================================================
 app.post('/api/ventas', auth, (req, res) => {
-  const { lineas, descuento_pct = 0, fidelitat = false, trabajador = null, metodo_pago = 'efectivo' } = req.body;
+  const { lineas, descuento_pct = 0, descuento_tipo = 'normal', familiar = null, fidelitat = false, trabajador = null, metodo_pago = 'efectivo' } = req.body;
   if (!Array.isArray(lineas) || lineas.length === 0) {
     return res.status(400).json({ error: 'El ticket está vacío' });
   }
@@ -159,10 +256,9 @@ app.post('/api/ventas', auth, (req, res) => {
   if (!descPermitidos.includes(Number(descuento_pct))) {
     return res.status(400).json({ error: 'Descuento no válido' });
   }
-  // Solo el -50% requiere nombre del trabajador (control)
-  if (Number(descuento_pct) === 50 && !trabajador) {
-    return res.status(400).json({ error: 'El descompte -50% requereix el nom del treballador' });
-  }
+  const tipoDesc = ['ninguno','normal','staff','familia'].includes(String(descuento_tipo)) ? String(descuento_tipo) : 'normal';
+  if (tipoDesc === 'staff' && !trabajador) return res.status(400).json({ error: 'El descuento STAFF requiere el nombre del trabajador' });
+  if (tipoDesc === 'familia' && (!trabajador || !familiar)) return res.status(400).json({ error: 'El descuento FAMILIA requiere familiar y trabajador' });
 
   // Recalcular precios SIEMPRE en el servidor
   let subtotalBruto = 0;
@@ -177,19 +273,31 @@ app.post('/api/ventas', auth, (req, res) => {
   });
 
   const PREMI_FIDELITAT = 3;
-  let total = subtotalBruto * (1 - Number(descuento_pct) / 100);
+  let descuentoImporte = 0;
+  if (tipoDesc === 'staff') {
+    const unidades = [];
+    for (const l of lineasCalc) for (let i = 0; i < l.cantidad; i++) unidades.push(l.precio_unit);
+    unidades.sort((a, b) => b - a);
+    descuentoImporte = unidades.slice(0, 2).reduce((s, precio) => s + precio * 0.5, 0);
+  } else if (tipoDesc === 'familia') {
+    descuentoImporte = subtotalBruto * 0.5;
+  } else {
+    descuentoImporte = subtotalBruto * (Number(descuento_pct) / 100);
+  }
+  let total = subtotalBruto - descuentoImporte;
   if (fidelitat) total = Math.max(0, total - PREMI_FIDELITAT);
+  descuentoImporte = +descuentoImporte.toFixed(2);
   total = +total.toFixed(2);
 
   const ahora = new Date().toISOString();
-  const dia = diaOperativoActual();
-  const cierre = cierreAbierto();
+  const cierre = abrirCierreAutomatico('venta');
+  const dia = cierre.dia_operativo;
 
   const insVenta = db.prepare(`
-    INSERT INTO ventas (fecha, dia_operativo, total, descuento_pct, fidelitat, trabajador, metodo_pago, cierre_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO ventas (fecha, dia_operativo, total, descuento_pct, descuento_tipo, familiar, descuento_importe, fidelitat, trabajador, metodo_pago, cierre_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const r = insVenta.run(ahora, dia, total, Number(descuento_pct), fidelitat ? 1 : 0, trabajador, metodo_pago, cierre ? cierre.id : null);
+  const r = insVenta.run(ahora, dia, total, Number(descuento_pct), tipoDesc, familiar, descuentoImporte, fidelitat ? 1 : 0, trabajador, metodo_pago, cierre ? cierre.id : null);
   const ventaId = r.lastInsertRowid;
 
   const insLinea = db.prepare(`
@@ -212,7 +320,7 @@ app.post('/api/ventas', auth, (req, res) => {
     `).run(total, total, cierre.id);
   }
 
-  res.json({ id: ventaId, total, fecha: ahora });
+  res.json({ id: ventaId, total, descuento_importe: descuentoImporte, descuento_tipo: tipoDesc, fecha: ahora });
 });
 
 // ============================================================
@@ -294,13 +402,8 @@ app.get('/api/cierre/estado', auth, (req, res) => {
 });
 
 app.post('/api/cierre/abrir', auth, soloAdmin, (req, res) => {
-  if (cierreAbierto()) return res.status(400).json({ error: 'Ya hay una caja abierta' });
-  const ahora = new Date().toISOString();
-  const dia = new Date().toISOString().slice(0, 10);
-  const r = db.prepare(`
-    INSERT INTO cierres (dia_operativo, abierto_en, estado) VALUES (?, ?, 'abierto')
-  `).run(dia, ahora);
-  res.json({ id: r.lastInsertRowid, dia_operativo: dia });
+  const caja = asegurarCaja10H('apertura-manual', { abrirSiNoHay: true });
+  res.json({ id: caja.id, dia_operativo: caja.dia_operativo });
 });
 
 // Calcula el resumen completo de un cierre (para el ticket de caja y el histórico)
@@ -364,13 +467,25 @@ function resumenCierreCompleto(cierre) {
   return { resumen, clients, ...extra, unidades, porProducto, porCategoria, franjas, porTrabajador, comparativa };
 }
 
-app.post('/api/cierre/cerrar', auth, soloAdmin, (req, res) => {
+app.post('/api/cierre/cerrar', auth, soloAdmin, async (req, res) => {
   const cierre = cierreAbierto();
   if (!cierre) return res.status(400).json({ error: 'No hay caja abierta' });
+  const cerradoEn = new Date().toISOString();
   db.prepare("UPDATE cierres SET estado='cerrado', cerrado_en=? WHERE id=?")
-    .run(new Date().toISOString(), cierre.id);
+    .run(cerradoEn, cierre.id);
 
-  res.json(resumenCierreCompleto(cierre));
+  const resumen = resumenCierreCompleto({ ...cierre, cerrado_en: cerradoEn });
+  const imprimir = !!(req.body && req.body.imprimir);
+  let impresion = { solicitada: imprimir, ok: false };
+  if (imprimir) {
+    try {
+      await impresora.imprimirCierre(resumen);
+      impresion = { solicitada: true, ok: true };
+    } catch (e) {
+      impresion = { solicitada: true, ok: false, error: e.message || String(e) };
+    }
+  }
+  res.json({ ...resumen, impresion });
 });
 
 // ============================================================
@@ -524,14 +639,20 @@ app.get('/api/admin/metriques', auth, soloAdmin, (req, res) => {
   // ----- Facturación por hora -----
   const porHora = db.prepare(`
     SELECT strftime('%H', fecha, 'localtime') hora, COUNT(*) tickets, COALESCE(SUM(total),0) total
-    FROM ventas WHERE dia_operativo = ? GROUP BY hora ORDER BY hora
+    FROM ventas WHERE dia_operativo = ? AND estado != 'anulada' GROUP BY hora ORDER BY hora
   `).all(dia);
 
   // ----- Ranking productos del día -----
   const porProducto = db.prepare(`
-    SELECT vl.nombre, SUM(vl.cantidad) unidades, SUM(vl.subtotal) total
-    FROM venta_lineas vl JOIN ventas v ON v.id = vl.venta_id
-    WHERE v.dia_operativo = ? GROUP BY vl.nombre ORDER BY unidades DESC
+    SELECT vl.producto_id, vl.nombre, COALESCE(p.categoria,'(altres)') categoria,
+           SUM(vl.cantidad) unidades, COALESCE(SUM(vl.subtotal),0) total,
+           COUNT(DISTINCT vl.venta_id) tickets, COALESCE(AVG(vl.precio_unit),0) precio_medio
+    FROM venta_lineas vl
+    JOIN ventas v ON v.id = vl.venta_id
+    LEFT JOIN productos p ON p.id = vl.producto_id
+    WHERE v.dia_operativo = ? AND v.estado != 'anulada'
+    GROUP BY vl.producto_id, vl.nombre, p.categoria
+    ORDER BY unidades DESC, total DESC, vl.nombre
   `).all(dia);
 
   // ----- Facturación por categoría (del día) -----
@@ -540,7 +661,7 @@ app.get('/api/admin/metriques', auth, soloAdmin, (req, res) => {
     FROM venta_lineas vl
     JOIN ventas v ON v.id = vl.venta_id
     LEFT JOIN productos p ON p.id = vl.producto_id
-    WHERE v.dia_operativo = ? GROUP BY p.categoria ORDER BY total DESC
+    WHERE v.dia_operativo = ? AND v.estado != 'anulada' GROUP BY p.categoria ORDER BY total DESC
   `).all(dia);
 
   // ----- Resumen del día -----
@@ -548,10 +669,10 @@ app.get('/api/admin/metriques', auth, soloAdmin, (req, res) => {
     SELECT COUNT(*) tickets, COALESCE(SUM(total),0) total, COALESCE(AVG(total),0) ticket_mig,
            COALESCE(SUM(fidelitat),0) premis_fidelitat,
            COALESCE(SUM(CASE WHEN descuento_pct>0 THEN 1 ELSE 0 END),0) amb_descompte
-    FROM ventas WHERE dia_operativo = ?
+    FROM ventas WHERE dia_operativo = ? AND estado != 'anulada'
   `).get(dia);
   const unidadesTotal = db.prepare(`
-    SELECT COALESCE(SUM(vl.cantidad),0) u FROM venta_lineas vl JOIN ventas v ON v.id = vl.venta_id WHERE v.dia_operativo = ?
+    SELECT COALESCE(SUM(vl.cantidad),0) u FROM venta_lineas vl JOIN ventas v ON v.id = vl.venta_id WHERE v.dia_operativo = ? AND v.estado != 'anulada'
   `).get(dia).u;
 
   // ----- Comparativa con el día operativo anterior -----
@@ -565,14 +686,25 @@ app.get('/api/admin/metriques', auth, soloAdmin, (req, res) => {
   // ----- Estacionalidad: facturación por mes del año -----
   const porMes = db.prepare(`
     SELECT substr(dia_operativo,1,7) mes, COALESCE(SUM(total),0) total, COUNT(*) tickets
-    FROM ventas WHERE substr(dia_operativo,1,4) = ? GROUP BY mes ORDER BY mes
+    FROM ventas WHERE substr(dia_operativo,1,4) = ? AND estado != 'anulada' GROUP BY mes ORDER BY mes
   `).all(any);
 
   // ----- Día de la semana que más factura (media del año) -----
   const porDiaSetmana = db.prepare(`
     SELECT strftime('%w', dia_operativo) dow, COALESCE(SUM(total),0) total, COUNT(DISTINCT dia_operativo) dies
-    FROM ventas WHERE substr(dia_operativo,1,4) = ? GROUP BY dow
+    FROM ventas WHERE substr(dia_operativo,1,4) = ? AND estado != 'anulada' GROUP BY dow
   `).all(any);
+
+  const lineasVendidas = db.prepare(`
+    SELECT v.id ticket_id, v.fecha, COALESCE(v.trabajador,'') trabajador, v.metodo_pago,
+           vl.nombre, vl.cantidad, vl.precio_unit, vl.subtotal, COALESCE(p.categoria,'(altres)') categoria
+    FROM venta_lineas vl
+    JOIN ventas v ON v.id = vl.venta_id
+    LEFT JOIN productos p ON p.id = vl.producto_id
+    WHERE v.dia_operativo = ? AND v.estado != 'anulada'
+    ORDER BY v.fecha DESC, vl.id DESC
+    LIMIT 1000
+  `).all(dia);
 
   const dies = db.prepare(`SELECT DISTINCT dia_operativo FROM ventas ORDER BY dia_operativo DESC LIMIT 90`).all().map(r => r.dia_operativo);
 
@@ -581,7 +713,7 @@ app.get('/api/admin/metriques', auth, soloAdmin, (req, res) => {
     clients: { dia: clientsDia, mes: clientsMes, any: clientsAny },
     facturacio: { dia: factDia, mes: factMes, any: factAny },
     porHora, porProducto, porCategoria, resumen, unidadesTotal,
-    comparativa, porMes, porDiaSetmana, dies
+    comparativa, porMes, porDiaSetmana, lineasVendidas, dies
   });
 });
 
@@ -650,15 +782,19 @@ app.get('/api/metricas/resumen', authMetricas, (req, res) => {
   `).all(dia);
 
   const porProducto = db.prepare(`
-    SELECT vl.nombre,
+    SELECT vl.producto_id,
+           vl.nombre,
+           COALESCE(p.categoria,'(altres)') categoria,
            SUM(vl.cantidad) unidades,
-           COALESCE(SUM(vl.subtotal),0) total
+           COALESCE(SUM(vl.subtotal),0) total,
+           COUNT(DISTINCT vl.venta_id) tickets,
+           COALESCE(AVG(vl.precio_unit),0) precio_medio
     FROM venta_lineas vl
     JOIN ventas v ON v.id = vl.venta_id
+    LEFT JOIN productos p ON p.id = vl.producto_id
     WHERE v.dia_operativo = ? AND v.estado != 'anulada'
-    GROUP BY vl.nombre
-    ORDER BY unidades DESC, total DESC
-    LIMIT 20
+    GROUP BY vl.producto_id, vl.nombre, p.categoria
+    ORDER BY unidades DESC, total DESC, vl.nombre
   `).all(dia);
 
   const porCategoria = db.prepare(`
@@ -688,7 +824,7 @@ app.get('/api/metricas/resumen', authMetricas, (req, res) => {
     FROM ventas
     WHERE dia_operativo = ?
     ORDER BY id DESC
-    LIMIT 20
+    LIMIT 50
   `).all(dia);
 
   const unidadesTotal = db.prepare(`
@@ -704,6 +840,17 @@ app.get('/api/metricas/resumen', authMetricas, (req, res) => {
     JOIN ventas v ON v.id = vl.venta_id
     WHERE v.dia_operativo = ? AND v.estado != 'anulada' AND ${SQL_ES_CLIENTE}
   `).get(dia).clientes;
+
+  const lineasVendidas = db.prepare(`
+    SELECT v.id ticket_id, v.fecha, COALESCE(v.trabajador,'') trabajador, v.metodo_pago,
+           vl.nombre, vl.cantidad, vl.precio_unit, vl.subtotal, COALESCE(p.categoria,'(altres)') categoria
+    FROM venta_lineas vl
+    JOIN ventas v ON v.id = vl.venta_id
+    LEFT JOIN productos p ON p.id = vl.producto_id
+    WHERE v.dia_operativo = ? AND v.estado != 'anulada'
+    ORDER BY v.fecha DESC, vl.id DESC
+    LIMIT 1000
+  `).all(dia);
 
   const mejorHora = porHora.reduce((best, row) => {
     if (!best || Number(row.total || 0) > Number(best.total || 0)) return row;
@@ -722,7 +869,76 @@ app.get('/api/metricas/resumen', authMetricas, (req, res) => {
     porProducto,
     porCategoria,
     porTrabajador,
+    lineasVendidas,
     ultimas
+  });
+});
+
+
+// Métricas PRO: comparativa acumulada por hora de 7 días + histórico diario.
+app.get('/api/metricas/pro', authMetricas, (req, res) => {
+  const diaBase = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.dia || '')) ? String(req.query.dia) : diaOperativoActual();
+  const base = new Date(diaBase + 'T12:00:00');
+  const dias = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(base); d.setDate(d.getDate() - i);
+    const dia = fechaLocalYYYYMMDD(d);
+    const filas = db.prepare(`
+      SELECT CAST(strftime('%H', fecha, 'localtime') AS INTEGER) hora,
+             COALESCE(SUM(total),0) total
+      FROM ventas WHERE dia_operativo=? AND estado!='anulada'
+      GROUP BY hora ORDER BY hora
+    `).all(dia);
+    const porHora = Object.fromEntries(filas.map(x => [Number(x.hora), Number(x.total || 0)]));
+    let acumulado = 0; const acumulados = {};
+    for (let h = 10; h <= 23; h++) { acumulado += porHora[h] || 0; acumulados[h] = +acumulado.toFixed(2); }
+    for (let h = 0; h <= 5; h++) { acumulado += porHora[h] || 0; acumulados[h] = +acumulado.toFixed(2); }
+    dias.push({ dia, acumulados, total: +acumulado.toFixed(2) });
+  }
+  const historico = db.prepare(`
+    SELECT dia_operativo dia, COUNT(*) tickets, COALESCE(SUM(total),0) total,
+           COALESCE(AVG(total),0) ticket_medio,
+           COALESCE(SUM(CASE WHEN metodo_pago='efectivo' THEN total ELSE 0 END),0) efectivo,
+           COALESCE(SUM(CASE WHEN metodo_pago='tarjeta' THEN total ELSE 0 END),0) tarjeta
+    FROM ventas WHERE estado!='anulada' AND dia_operativo <= ?
+    GROUP BY dia_operativo ORDER BY dia_operativo DESC LIMIT 31
+  `).all(diaBase);
+  res.json({ ok: true, dia: diaBase, dias, historico });
+});
+
+function detectarUSB(callback) {
+  if (process.platform !== 'win32') return callback(new Error('La copia USB solo está disponible en Windows'));
+  const ps = "Get-CimInstance Win32_LogicalDisk | Where-Object {$_.DriveType -eq 2} | Select-Object -ExpandProperty DeviceID";
+  execFile('powershell', ['-NoProfile','-Command', ps], { windowsHide: true }, (err, stdout) => {
+    if (err) return callback(err);
+    const unidades = String(stdout || '').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    if (!unidades.length) return callback(new Error('No se ha detectado ningún USB. Conecta el pendrive y vuelve a probar.'));
+    callback(null, unidades[0] + '\\');
+  });
+}
+
+app.get('/api/admin/backup-usb/estado', auth, soloAdmin, (req, res) => {
+  detectarUSB((err, unidad) => err ? res.json({ disponible:false, error:err.message }) : res.json({ disponible:true, unidad }));
+});
+
+app.post('/api/admin/backup-usb', auth, soloAdmin, (req, res) => {
+  detectarUSB((err, unidad) => {
+    if (err) return res.status(400).json({ error: err.message });
+    try {
+      const ahora = new Date();
+      const sello = ahora.toISOString().replace(/[:.]/g,'-');
+      const destino = path.join(unidad, 'TPV-Gelateria-Backup-USB', sello);
+      fs.mkdirSync(destino, { recursive:true });
+      const dataDir = process.env.POS_DB_DIR;
+      if (!dataDir || !fs.existsSync(dataDir)) throw new Error('No se encuentra la carpeta de datos del TPV');
+      fs.cpSync(dataDir, path.join(destino, 'datos'), { recursive:true, force:true });
+      const asar = path.join(process.resourcesPath || '', 'app.asar');
+      if (fs.existsSync(asar)) fs.copyFileSync(asar, path.join(destino, 'app.asar'));
+      fs.writeFileSync(path.join(destino, 'LEEME-RESTAURACION.txt'),
+        'COPIA COMPLETA TPV GELATERIA\r\nFecha: '+ahora.toLocaleString('es-ES')+'\r\n\r\nNo modifiques estos archivos. Para restaurar, contacta con el administrador.\r\n');
+      fs.writeFileSync(path.join(destino, 'estado.json'), JSON.stringify({version:'TPV Gelateria v4.0.0 + FLAMA Update',fecha:ahora.toISOString(),origen:dataDir},null,2));
+      res.json({ ok:true, unidad, destino });
+    } catch(e) { res.status(500).json({ error:e.message }); }
   });
 });
 
@@ -842,6 +1058,15 @@ app.put('/api/admin/password', auth, soloAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ============================================================
+//  FLAMA UPDATE v1 — rutas OTA, heartbeat y control administrador
+// ============================================================
+flamaUpdate.registerRoutes(app, {
+  auth,
+  soloAdmin,
+  getCashClosed: () => !cierreAbierto(),
+});
+
 // ---------- ARRANQUE ----------
 // Cargar el nombre de la impresora guardado (si existe)
 try {
@@ -862,4 +1087,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('    admin / admin   (tú — ve todo)');
   console.log('    staff / staff   (personal — solo cobrar)');
   console.log('');
+  console.log(`  FLAMA Update:      http://localhost:${PORT}/update.html`);
+  console.log('');
+  flamaUpdate.startBackgroundChecks();
 });

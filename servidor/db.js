@@ -41,6 +41,15 @@ try {
   }
 } catch (e) { /* tabla aún no existe */ }
 
+
+// Migración descuentos controlados: tipo, familiar e importe real descontado
+try {
+  const cols = db.prepare("PRAGMA table_info(ventas)").all();
+  if (cols.length && !cols.some(c => c.name === 'descuento_tipo')) db.exec("ALTER TABLE ventas ADD COLUMN descuento_tipo TEXT NOT NULL DEFAULT 'normal'");
+  if (cols.length && !cols.some(c => c.name === 'familiar')) db.exec("ALTER TABLE ventas ADD COLUMN familiar TEXT");
+  if (cols.length && !cols.some(c => c.name === 'descuento_importe')) db.exec("ALTER TABLE ventas ADD COLUMN descuento_importe REAL NOT NULL DEFAULT 0");
+} catch (e) { /* tabla aún no existe */ }
+
 // ---------- ESQUEMA ----------
 db.exec(`
   CREATE TABLE IF NOT EXISTS categorias (
@@ -86,6 +95,9 @@ db.exec(`
     dia_operativo TEXT NOT NULL,            -- YYYY-MM-DD del cierre al que pertenece
     total         REAL NOT NULL,
     descuento_pct INTEGER NOT NULL DEFAULT 0,
+    descuento_tipo TEXT NOT NULL DEFAULT 'normal',
+    familiar      TEXT,
+    descuento_importe REAL NOT NULL DEFAULT 0,
     fidelitat     INTEGER NOT NULL DEFAULT 0, -- premio fidelitat aplicado (-3€)
     trabajador    TEXT,                     -- nombre del staff que hizo la venta
     metodo_pago   TEXT NOT NULL DEFAULT 'efectivo', -- 'efectivo' | 'tarjeta'

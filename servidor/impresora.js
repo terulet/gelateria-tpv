@@ -304,6 +304,17 @@ async function abrirCajon() {
 }
 
 // Imprimir ticket directo por ESC/POS. NO abre cajón salvo que se pida explícitamente.
+
+function euroTexto(n) {
+  return Number(n || 0).toFixed(2) + ' E';
+}
+
+function lineaTicket(nombre, derecha) {
+  const izq = String(nombre || '').substring(0, 22).padEnd(22);
+  const der = String(derecha || '').substring(0, 10).padStart(10);
+  return izq + der;
+}
+
 async function imprimirTicket(datos, opciones = {}) {
   const L = [];
   L.push(CMD.init, CMD.alignCenter, CMD.boldOn, CMD.doubleOn);
@@ -363,4 +374,59 @@ if (datos.entregado != null && Number(datos.entregado) > 0) {
   return enviarRaw(Buffer.concat(L));
 }
 
-module.exports = { abrirCajon, imprimirTicket, setImpresora, getImpresora };
+// Imprime el resumen de cierre de caja. No abre cajón.
+async function imprimirCierre(datos) {
+  const r = datos || {};
+  const c = r.resumen || {};
+  const L = [];
+  L.push(CMD.init, CMD.alignCenter, CMD.boldOn, CMD.doubleOn);
+  L.push(texto('TANCAMENT CAIXA'));
+  L.push(CMD.doubleOff, CMD.boldOff);
+  L.push(texto('La Gelateria de Roses'));
+  L.push(CMD.alignLeft);
+  L.push(texto('--------------------------------'));
+  L.push(texto('Dia: ' + (c.dia_operativo || '')));
+  L.push(texto('Oberta: ' + (c.abierto_en ? new Date(c.abierto_en).toLocaleString('ca-ES') : '-')));
+  L.push(texto('Tancada: ' + (c.cerrado_en ? new Date(c.cerrado_en).toLocaleString('ca-ES') : new Date().toLocaleString('ca-ES'))));
+  L.push(texto('--------------------------------'));
+  L.push(texto(lineaTicket('TOTAL', euroTexto(c.total_ventas))));
+  L.push(texto(lineaTicket('Efectiu', euroTexto(c.total_efectivo))));
+  L.push(texto(lineaTicket('Targeta', euroTexto(c.total_tarjeta))));
+  L.push(texto(lineaTicket('Tiquets', c.num_tickets || 0)));
+  if (r.ticket_mig != null) L.push(texto(lineaTicket('Ticket mig', euroTexto(r.ticket_mig))));
+  if (r.clients != null) L.push(texto(lineaTicket('Clients', r.clients)));
+  if (r.unidades != null) L.push(texto(lineaTicket('Unitats', r.unidades)));
+  if (r.premis_fidelitat != null) L.push(texto(lineaTicket('Premis fidel.', r.premis_fidelitat)));
+  L.push(texto('--------------------------------'));
+  L.push(CMD.boldOn); L.push(texto('Per franja')); L.push(CMD.boldOff);
+  const f = r.franjas || {};
+  L.push(texto(lineaTicket('Mati', euroTexto(f.mati))));
+  L.push(texto(lineaTicket('Tarda', euroTexto(f.tarda))));
+  L.push(texto(lineaTicket('Nit', euroTexto(f.nit))));
+
+  if (Array.isArray(r.porCategoria) && r.porCategoria.length) {
+    L.push(texto('--------------------------------'));
+    L.push(CMD.boldOn); L.push(texto('Categories')); L.push(CMD.boldOff);
+    r.porCategoria.slice(0, 12).forEach(cat => {
+      L.push(texto(lineaTicket((cat.categoria || '').toUpperCase().substring(0, 16) + ' ' + (cat.unidades || 0) + 'x', euroTexto(cat.total))));
+    });
+  }
+
+  if (Array.isArray(r.porProducto) && r.porProducto.length) {
+    L.push(texto('--------------------------------'));
+    L.push(CMD.boldOn); L.push(texto('Productes')); L.push(CMD.boldOff);
+    r.porProducto.slice(0, 30).forEach((p, i) => {
+      const nom = String(i + 1).padStart(2) + '. ' + String(p.nombre || '').substring(0, 17);
+      L.push(texto(lineaTicket(nom + ' ' + (p.unidades || 0) + 'x', euroTexto(p.total))));
+    });
+  }
+
+  L.push(texto('--------------------------------'));
+  L.push(CMD.alignCenter);
+  L.push(texto('CAIXA TANCADA'));
+  L.push(CMD.feed(3));
+  L.push(CMD.cut);
+  return enviarRaw(Buffer.concat(L));
+}
+
+module.exports = { abrirCajon, imprimirTicket, imprimirCierre, setImpresora, getImpresora };

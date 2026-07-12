@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>FLAMA Update · TPV Gelateria</title>
+<style>
+:root{--p:#008e8a;--pd:#006c69;--gold:#d8b24a;--ok:#17a67a;--bad:#e74f43;--bg:#eef7f6;--card:#fff;--txt:#173c3d;--muted:#6f898a;--line:#cde0df}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,var(--p),#00aaa5);font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:var(--txt);min-height:100vh;padding:env(safe-area-inset-top) 14px env(safe-area-inset-bottom)}
+.wrap{max-width:760px;margin:0 auto;padding:18px 0 38px}.head{color:#fff;text-align:center;padding:14px}.head h1{margin:0;font-size:28px}.head p{margin:6px 0 0;opacity:.9}.card{background:var(--card);border-radius:18px;padding:20px;margin:14px 0;box-shadow:0 10px 30px #004b4930}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.stat{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:14px}.stat small{display:block;color:var(--muted);font-weight:700;margin-bottom:6px}.stat b{font-size:21px}.status{font-size:19px;font-weight:900;padding:13px;border-radius:12px;background:var(--bg);margin-top:12px}.ok{color:var(--ok)}.bad{color:var(--bad)}.muted{color:var(--muted)}
+label{display:block;font-weight:800;margin:12px 0 6px}input[type=text],input[type=password],input[type=url],textarea{width:100%;padding:15px;border:2px solid var(--line);border-radius:12px;font-size:16px;background:#fff;color:var(--txt)}textarea{min-height:90px}.row{display:flex;gap:10px;flex-wrap:wrap}.btn{appearance:none;border:0;border-radius:13px;padding:15px 18px;font-size:16px;font-weight:900;background:var(--p);color:#fff;flex:1;min-width:150px}.btn:disabled{opacity:.45}.btn.okb{background:var(--ok)}.btn.badb{background:var(--bad)}.btn.gold{background:var(--gold);color:#443300}.login{max-width:480px;margin:8vh auto 0}.hide{display:none}.msg{padding:13px;border-radius:12px;margin-top:12px;background:var(--bg);white-space:pre-wrap;word-break:break-word}.progress{height:12px;background:#dbeceb;border-radius:99px;overflow:hidden;margin-top:10px}.progress>div{height:100%;background:var(--p);width:0;transition:width .25s}.checks label{display:flex;align-items:center;gap:10px;font-weight:700}.checks input{width:22px;height:22px}.filebox{border:2px dashed var(--p);border-radius:14px;padding:16px;background:#f5fbfa}code{font-size:12px;word-break:break-all}.foot{text-align:center;color:#fff9;font-size:13px;margin-top:20px}@media(max-width:520px){.grid{grid-template-columns:1fr}.card{padding:17px}.btn{width:100%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head"><h1>🔄 FLAMA Update</h1><p>TPV La Gelateria de Roses</p></div>
+
+  <section id="login" class="card login">
+    <h2>Acceso administrador</h2>
+    <label>Usuario</label><input id="user" type="text" value="admin" autocomplete="username">
+    <label>Contraseña</label><input id="pass" type="password" autocomplete="current-password">
+    <button class="btn" style="width:100%;margin-top:16px" onclick="login()">Entrar</button>
+    <div id="login-msg" class="msg hide"></div>
+  </section>
+
+  <main id="panel" class="hide">
+    <section class="card">
+      <div class="grid">
+        <div class="stat"><small>INSTALADA</small><b id="installed">—</b></div>
+        <div class="stat"><small>DISPONIBLE</small><b id="available">—</b></div>
+      </div>
+      <div id="status" class="status">Consultando…</div>
+      <div class="progress"><div id="bar"></div></div>
+      <div id="details" class="msg muted">—</div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn" onclick="checkUpdate()">🔎 Buscar</button>
+        <button id="install-btn" class="btn okb" onclick="installUpdate()" disabled>⬇️ Instalar</button>
+        <button class="btn badb" onclick="rollback()">↩️ Restaurar</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>📦 Enviar actualización desde el iPhone</h2>
+      <p class="muted">Selecciona un archivo <b>.flamaupdate</b> generado por FLAMA o, como emergencia, un <b>app.asar</b>.</p>
+      <div class="filebox">
+        <input id="file" type="file" accept=".flamaupdate,.asar,application/json,application/octet-stream">
+        <div id="raw-fields" class="hide">
+          <label>Nueva versión</label><input id="raw-version" type="text" placeholder="4.0.1">
+          <label>Descripción</label><textarea id="raw-notes" placeholder="Cambios incluidos"></textarea>
+        </div>
+        <button class="btn gold" style="width:100%;margin-top:14px" onclick="uploadFile()">Subir, verificar y preparar</button>
+      </div>
+      <div id="upload-msg" class="msg hide"></div>
+    </section>
+
+    <section class="card">
+      <h2>⚙️ Canal automático</h2>
+      <label>URL del manifest</label>
+      <input id="manifest-url" type="url" spellcheck="false">
+      <div class="checks">
+        <label><input id="auto-check" type="checkbox"> Comprobar el canal automáticamente</label>
+        <label><input id="auto-download" type="checkbox"> Descargar automáticamente</label>
+        <label><input id="auto-closed" type="checkbox"> Instalar si el TPV está cerrado</label>
+        <label><input id="auto-cash" type="checkbox"> Instalar después de cerrar caja</label>
+      </div>
+      <button class="btn" style="width:100%;margin-top:10px" onclick="saveConfig()">Guardar configuración</button>
+      <p class="muted" style="font-size:13px">El canal previsto es GitHub Releases. El TPV verifica versión, tamaño y SHA‑256 antes de instalar.</p>
+    </section>
+
+    <section class="card">
+      <h2>Historial</h2>
+      <div id="last-result" class="msg muted">Todavía no hay instalaciones registradas.</div>
+      <button class="btn" style="width:100%;margin-top:14px;background:#668485" onclick="logout()">Cerrar sesión</button>
+    </section>
+  </main>
+  <div class="foot">FLAMA Update v1 · La Gelateria de Roses</div>
+</div>
+<script>
+let TOKEN=null, lastStatus=null;
+const $=id=>document.getElementById(id);
+async function api(path,opts={}){
+  const headers={'Content-Type':'application/json'}; if(TOKEN)headers.Authorization='Bearer '+TOKEN;
+  const r=await fetch('/api'+path,{...opts,headers});
+  const data=await r.json().catch(()=>({error:'Respuesta no válida'}));
+  if(!r.ok)throw new Error(data.error||'Error del servidor'); return data;
+}
+function message(id,text,bad=false){const e=$(id);e.textContent=text;e.classList.remove('hide','bad','ok');e.classList.add(bad?'bad':'ok')}
+async function login(){
+  try{const r=await api('/login',{method:'POST',body:JSON.stringify({username:$('user').value.trim(),password:$('pass').value})});
+    if(r.rol!=='admin')throw new Error('Este usuario no es administrador'); TOKEN=r.token;
+    $('login').classList.add('hide');$('panel').classList.remove('hide');await refresh();
+  }catch(e){message('login-msg',e.message,true)}
+}
+function logout(){TOKEN=null;$('panel').classList.add('hide');$('login').classList.remove('hide');$('pass').value=''}
+const phaseNames={idle:'En espera',checking:'Buscando actualización…',available:'Actualización disponible',downloading:'Descargando y verificando…',ready:'Preparada para instalar',installing:'Instalando; el TPV se reiniciará','up-to-date':'El TPV está al día',success:'Actualización completada',error:'Error de actualización'};
+async function refresh(){
+  if(!TOKEN)return;
+  try{const d=await api('/admin/update/status');lastStatus=d;
+    $('installed').textContent='v'+d.version;$('available').textContent=d.availableVersion?'v'+d.availableVersion:'—';
+    $('status').textContent=phaseNames[d.phase]||d.phase;$('status').className='status '+(d.phase==='error'?'bad':(d.phase==='ready'||d.phase==='success'?'ok':''));
+    $('bar').style.width=(Number(d.progress)||0)+'%';
+    $('details').textContent=d.error?d.error:(d.notes||('Última comprobación: '+(d.lastCheckAt?new Date(d.lastCheckAt).toLocaleString():'—')));
+    $('install-btn').disabled=!(d.pending||d.phase==='ready');
+    $('manifest-url').value=d.config.manifestUrl||'';$('auto-check').checked=!!d.config.autoCheck;$('auto-download').checked=!!d.config.autoDownload;$('auto-closed').checked=!!d.config.autoInstallWhenClosed;$('auto-cash').checked=!!d.config.autoInstallAtCashClose;
+    $('last-result').textContent=d.lastResult?`${d.lastResult.ok?'✅':'⚠️'} ${d.lastResult.message||d.lastResult.action||''}\n${new Date(d.lastResult.finishedAt).toLocaleString()}`:'Todavía no hay instalaciones registradas.';
+  }catch(e){$('status').textContent=e.message;$('status').className='status bad'}
+}
+async function checkUpdate(){try{$('status').textContent='Buscando y descargando…';await api('/admin/update/check',{method:'POST',body:'{}'});await refresh()}catch(e){alert(e.message);await refresh()}}
+async function installUpdate(){if(!confirm('El TPV hará backup, se cerrará, instalará y volverá a abrirse. ¿Continuar?'))return;try{await api('/admin/update/install',{method:'POST',body:JSON.stringify({force:true})});alert('Actualización iniciada. No apagues el ordenador.');await refresh()}catch(e){alert(e.message)}}
+async function rollback(){if(!confirm('¿Restaurar el último backup completo?'))return;try{await api('/admin/update/rollback',{method:'POST',body:'{}'});alert('Restauración iniciada.');await refresh()}catch(e){alert(e.message)}}
+$('file').addEventListener('change',()=>{$('raw-fields').classList.toggle('hide',!$('file').files[0]||$('file').files[0].name.toLowerCase().endsWith('.flamaupdate'))});
+function readAsDataURL(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(r.error||new Error('No se pudo leer el archivo'));r.readAsDataURL(file)})}
+function readAsText(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(r.error||new Error('No se pudo leer el archivo'));r.readAsText(file)})}
+async function uploadFile(){
+  const file=$('file').files[0];if(!file){message('upload-msg','Selecciona un archivo.',true);return}
+  try{let payload;
+    if(file.name.toLowerCase().endsWith('.flamaupdate')){payload=JSON.parse((await readAsText(file)).replace(/^\uFEFF/,''));if(payload.appId!=='com.lagelateria.tpv')throw new Error('El paquete no pertenece a este TPV')}
+    else{const version=$('raw-version').value.trim();if(!/^v?\d+\.\d+\.\d+$/.test(version))throw new Error('Indica una versión como 4.0.1');payload={appId:'com.lagelateria.tpv',version,notes:$('raw-notes').value.trim(),appAsarBase64:await readAsDataURL(file)}}
+    message('upload-msg','Subiendo y verificando…');await api('/admin/update/upload',{method:'POST',body:JSON.stringify(payload)});message('upload-msg','✅ Actualización verificada y preparada. Ya puedes pulsar Instalar.');await refresh();
+  }catch(e){message('upload-msg',e.message,true)}
+}
+async function saveConfig(){try{await api('/admin/update/config',{method:'PUT',body:JSON.stringify({manifestUrl:$('manifest-url').value.trim(),autoCheck:$('auto-check').checked,autoDownload:$('auto-download').checked,autoInstallWhenClosed:$('auto-closed').checked,autoInstallAtCashClose:$('auto-cash').checked})});alert('Configuración guardada');await refresh()}catch(e){alert(e.message)}}
+setInterval(()=>{if(TOKEN)refresh()},10000);
+</script>
+</body>
+</html>
