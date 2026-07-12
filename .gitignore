@@ -1,8 +1,58 @@
-﻿node_modules/
+# ============================================================
+#  TPV Gelateria — .gitignore endurecido
+#  NUNCA subir datos del negocio, credenciales ni binarios.
+# ============================================================
+
+# --- Dependencias / build ---
+node_modules/
 dist/
+build/
 *.exe
 *.dll
-.env
-.DS_Store
+
+# --- Base de datos (NUNCA subir: contiene ventas y usuarios) ---
+datos/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# --- Copias de seguridad y exportaciones de datos/ventas ---
+*.bak
+*.backup
+*.old
+*.dump
+*.sql
+backup/
+backups/
+copia/
+copias/
+export/
+exports/
+ventas*.csv
+ventes*.csv
+*.xlsx
+
+# --- Logs ---
 *.log
-build/
+logs/
+
+# --- Secretos, credenciales y entorno ---
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+id_rsa*
+secrets/
+*.secret
+config.local.json
+ajustes.local.*
+
+# --- Sistema operativo ---
+.DS_Store
+Thumbs.db
