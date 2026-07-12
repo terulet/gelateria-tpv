@@ -125,7 +125,7 @@ function backupDiarioInvisible() {
       const asar = path.join(process.resourcesPath, 'app.asar');
       if (fs.existsSync(asar)) fs.copyFileSync(asar, path.join(destino, 'app.asar'));
       fs.writeFileSync(path.join(destino, 'estado.json'), JSON.stringify({
-        version: 'TPV Gelateria v4.0.0 + FLAMA Update',
+        version: 'TPV Gelateria v4.0.2 + FLAMA Update',
         fecha: ahora.toISOString(),
         datos: userDataDir,
         appAsarIncluido: fs.existsSync(path.join(destino, 'app.asar'))

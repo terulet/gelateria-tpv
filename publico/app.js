@@ -625,32 +625,104 @@ function activarStaff50() {
 function nombresGuardados(clave) {
   try { return JSON.parse(localStorage.getItem(clave) || '[]').filter(Boolean); } catch { return []; }
 }
-function guardarNombre(clave, nombre) {
+// Historial de nombres usados (familiar/trabajador) en localStorage.
+// OJO: se llama recordarNombreUsado y NO guardarNombre porque más abajo existe
+// otra función guardarNombre(id, nombre) del editor de productos que, por ser
+// una declaración posterior con el mismo nombre, sobrescribía a esta y hacía
+// que el historial nunca se guardara. Dedup insensible a mayúsculas/acentos.
+function recordarNombreUsado(clave, nombre) {
   const limpio = String(nombre || '').trim(); if (!limpio) return;
-  const lista = nombresGuardados(clave).filter(n => n.toLowerCase() !== limpio.toLowerCase());
+  const claveNorm = normNombre(limpio);
+  const lista = nombresGuardados(clave).filter(n => normNombre(n) !== claveNorm);
   lista.unshift(limpio); localStorage.setItem(clave, JSON.stringify(lista.slice(0, 50)));
 }
+// Clave de comparación insensible a mayúsculas, espacios y acentos (evita
+// duplicados como "Ana ", "ana", "Aná").
+function normNombre(s) {
+  return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+// Modal FAMILIA · 50% con teclado táctil propio (sin depender del teclado
+// físico de Windows) y sugerencias grandes de nombres guardados/recientes.
 function pedirDatosFamilia(onOk) {
   const ov = document.createElement('div'); ov.className = 'overlay';
-  ov.innerHTML = `<div class="modal" style="max-width:650px"><h2>👨‍👩‍👧 FAMILIA · 50%</h2><div class="msub">Escribe o toca un nombre guardado</div>
-    <label style="font-weight:800">Familiar</label><input id="fam-nombre" list="fam-lista" autocomplete="off" style="width:100%;font-size:24px;padding:14px;border:2px solid var(--p320);border-radius:12px;margin:6px 0 14px"><datalist id="fam-lista"></datalist>
-    <label style="font-weight:800">Trabajador</label><input id="fam-trab" list="trab-lista" autocomplete="off" style="width:100%;font-size:24px;padding:14px;border:2px solid var(--p320);border-radius:12px;margin:6px 0 16px"><datalist id="trab-lista"></datalist>
-    <div class="confirm-btns"><button class="btn-conf-cancel" id="fam-cancel">Cancelar</button><button class="btn-conf-ok" id="fam-ok">✓ Aplicar 50%</button></div></div>`;
+  ov.innerHTML = `<div class="modal fam-modal" style="max-width:760px">
+    <h2>👨‍👩‍👧 FAMILIA · 50%</h2>
+    <div class="msub">Toca un campo y escribe, o toca un nombre guardado</div>
+    <div class="fam-campos">
+      <button type="button" class="fam-campo" data-campo="familiar"><span class="fam-cap">Familiar</span><span class="fam-val"></span></button>
+      <button type="button" class="fam-campo" data-campo="trabajador"><span class="fam-cap">Trabajador</span><span class="fam-val"></span></button>
+    </div>
+    <div class="fam-suges" id="fam-suges"></div>
+    <div class="adm-teclado fam-teclado" id="fam-teclado"></div>
+    <div class="confirm-btns" style="margin-top:14px">
+      <button type="button" class="btn-conf-cancel" id="fam-cancel">Cancelar</button>
+      <button type="button" class="btn-conf-ok" id="fam-ok">✓ Aplicar 50%</button>
+    </div></div>`;
   document.body.appendChild(ov);
-  const fams = nombresGuardados('tpv_familia_nombres');
-  const emps = [...new Set([...(trabajadores || []).map(t => t.nombre), ...nombresGuardados('tpv_empleado_nombres')])];
-  ov.querySelector('#fam-lista').innerHTML = fams.map(n => `<option value="${esc(n)}">`).join('');
-  ov.querySelector('#trab-lista').innerHTML = emps.map(n => `<option value="${esc(n)}">`).join('');
-  ov.querySelector('#fam-cancel').onclick = () => ov.remove();
-  ov.querySelector('#fam-ok').onclick = () => {
-    const familiar = ov.querySelector('#fam-nombre').value.trim(); const trabajador = ov.querySelector('#fam-trab').value.trim();
-    if (!familiar || !trabajador) { toast('Falta el nombre del familiar o del trabajador', true); return; }
-    guardarNombre('tpv_familia_nombres', familiar); guardarNombre('tpv_empleado_nombres', trabajador);
-    descuento = 50; descuentoTipo = 'familia'; descuentoFamiliar = familiar; descuentoTrabajador = trabajador; cobroTrabajador = trabajador;
-    document.querySelectorAll('.desc-btn').forEach(b => b.classList.remove('on')); const b=document.querySelector('[data-tipo="familia"]'); if(b)b.classList.add('on');
-    ov.remove(); renderTicket(); if (onOk) onOk();
+
+  const valores = { familiar: '', trabajador: '' };
+  let campo = 'familiar';
+  let mayus = true; // los nombres empiezan en mayúscula
+
+  const fuentes = {
+    familiar: () => nombresGuardados('tpv_familia_nombres'),
+    trabajador: () => {
+      const vistos = new Set(), out = [];
+      [...(trabajadores || []).map(t => t && t.nombre), ...nombresGuardados('tpv_empleado_nombres')]
+        .filter(Boolean).forEach(n => { const k = normNombre(n); if (k && !vistos.has(k)) { vistos.add(k); out.push(n); } });
+      return out;
+    }
   };
-  setTimeout(() => ov.querySelector('#fam-nombre').focus(), 50);
+
+  const suges = ov.querySelector('#fam-suges');
+  const tcont = ov.querySelector('#fam-teclado');
+
+  function pintarCampos() {
+    ov.querySelectorAll('.fam-campo').forEach(b => {
+      const c = b.dataset.campo, val = b.querySelector('.fam-val');
+      b.classList.toggle('active', c === campo);
+      if (valores[c]) { val.textContent = valores[c]; val.classList.remove('ph'); }
+      else { val.textContent = 'toca y escribe…'; val.classList.add('ph'); }
+    });
+  }
+  function pintarSuges() {
+    const q = normNombre(valores[campo]);
+    const lista = fuentes[campo]().filter(n => { const k = normNombre(n); return !q || k.startsWith(q); }).slice(0, 12);
+    if (!lista.length) { suges.innerHTML = '<span class="fam-nohay">Sin nombres guardados · escribe uno nuevo</span>'; return; }
+    suges.innerHTML = lista.map(n => `<button type="button" class="fam-chip" data-n="${esc(n)}">${esc(n)}</button>`).join('');
+    suges.querySelectorAll('.fam-chip').forEach(ch => ch.onclick = () => { valores[campo] = ch.dataset.n; pintarCampos(); pintarSuges(); });
+  }
+  function tecla(txt, cls, fn) { const b = document.createElement('button'); b.type = 'button'; b.className = 'tecla' + (cls ? ' ' + cls : ''); b.textContent = txt; b.onclick = fn; return b; }
+  function pintarTeclado() {
+    tcont.innerHTML = '';
+    tcont.appendChild(tecla(mayus ? '⇧ ABC' : '⇧ abc', mayus ? 'shift-on' : '', () => { mayus = !mayus; pintarTeclado(); }));
+    FILAS_QWERTY.flat().forEach(k => {
+      const car = (mayus && k.length === 1 && k.match(/[a-zç]/)) ? k.toUpperCase() : k;
+      tcont.appendChild(tecla(car, '', () => { valores[campo] += car; pintarCampos(); pintarSuges(); }));
+    });
+    tcont.appendChild(tecla('␣', 'wide', () => { valores[campo] += ' '; pintarCampos(); pintarSuges(); }));
+    tcont.appendChild(tecla('⌫', 'wide del2', () => { valores[campo] = valores[campo].slice(0, -1); pintarCampos(); pintarSuges(); }));
+    tcont.appendChild(tecla(campo === 'familiar' ? 'Siguiente ▸' : '✓ Listo', 'wide ok', () => {
+      if (campo === 'familiar') { campo = 'trabajador'; mayus = !valores.trabajador; pintarCampos(); pintarSuges(); pintarTeclado(); }
+      else confirmar();
+    }));
+  }
+  ov.querySelectorAll('.fam-campo').forEach(b => b.onclick = () => { campo = b.dataset.campo; mayus = !valores[campo]; pintarCampos(); pintarSuges(); pintarTeclado(); });
+
+  function confirmar() {
+    const familiar = valores.familiar.trim(), trabajador = valores.trabajador.trim();
+    if (!familiar) { toast('Falta el nombre del familiar', true); campo = 'familiar'; pintarCampos(); pintarSuges(); pintarTeclado(); return; }
+    if (!trabajador) { toast('Falta el nombre del trabajador', true); campo = 'trabajador'; pintarCampos(); pintarSuges(); pintarTeclado(); return; }
+    recordarNombreUsado('tpv_familia_nombres', familiar); recordarNombreUsado('tpv_empleado_nombres', trabajador);
+    descuento = 50; descuentoTipo = 'familia'; descuentoFamiliar = familiar; descuentoTrabajador = trabajador; cobroTrabajador = trabajador;
+    document.querySelectorAll('.desc-btn').forEach(b => b.classList.remove('on')); const b = document.querySelector('[data-tipo="familia"]'); if (b) b.classList.add('on');
+    ov.remove(); renderTicket(); if (onOk) onOk();
+  }
+  ov.querySelector('#fam-cancel').onclick = () => ov.remove();
+  ov.querySelector('#fam-ok').onclick = confirmar;
+
+  pintarCampos(); pintarSuges(); pintarTeclado();
 }
 function activarFamilia50() { pedirDatosFamilia(); }
 function toggleFidelitat() {
@@ -921,7 +993,7 @@ function pedirNombreTrabajador(onOk) {
   ok.onclick = () => {
     const n = nom.trim();
     if (!n) { toast('Escriu el teu nom', true); return; }
-    cobroTrabajador = n; descuentoTrabajador = n; guardarNombre('tpv_empleado_nombres', n); ov.remove(); onOk();
+    cobroTrabajador = n; descuentoTrabajador = n; recordarNombreUsado('tpv_empleado_nombres', n); ov.remove(); onOk();
   };
   tcont.appendChild(ok);
   $('#nom-cancelar').onclick = () => ov.remove();

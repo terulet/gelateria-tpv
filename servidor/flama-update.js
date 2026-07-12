@@ -14,7 +14,7 @@ const { spawn } = require('child_process');
 
 const APP_ID = 'com.lagelateria.tpv';
 const APP_NAME = 'TPV Gelateria';
-const APP_VERSION = '4.0.0';
+const APP_VERSION = '4.0.2';
 const AGENT_VERSION = '1.0.0';
 const DEFAULT_MANIFEST_URL = 'https://github.com/terulet/TPV-Gelateria-Updates/releases/latest/download/manifest.json';
 const MAX_DOWNLOAD_BYTES = 150 * 1024 * 1024;

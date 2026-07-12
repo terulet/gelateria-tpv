@@ -45,6 +45,20 @@
   .tt-display { min-height: 56px; padding: 14px 16px; border: 2px solid var(--p320); border-radius: 12px; font-size: 22px; font-weight: 700; background: var(--panel-2); margin-bottom: 12px; word-break: break-all; }
   .camp-tactil { flex: 1; padding: 13px 16px; border: 2px solid var(--line); border-radius: 10px; font-size: 16px; font-weight: 700; background: var(--panel-2); cursor: pointer; min-height: 48px; display: flex; align-items: center; }
   .camp-tactil:active { border-color: var(--p320); }
+  /* Modal FAMILIA 50% con teclado táctil propio */
+  .fam-modal button { touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  .fam-campos { display: flex; gap: 12px; margin-bottom: 12px; }
+  .fam-campo { flex: 1; text-align: left; padding: 12px 16px; border: 2px solid var(--line); border-radius: 14px; background: var(--panel-2); display: flex; flex-direction: column; gap: 4px; min-height: 76px; }
+  .fam-campo.active { border-color: var(--p320); box-shadow: 0 6px 18px #0002; }
+  .fam-campo .fam-cap { font-size: 14px; font-weight: 800; color: var(--txt-dim); text-transform: uppercase; letter-spacing: .04em; }
+  .fam-campo .fam-val { font-size: 24px; font-weight: 800; word-break: break-word; }
+  .fam-campo .fam-val.ph { color: #9db3b6; font-weight: 600; }
+  .fam-suges { display: flex; flex-wrap: wrap; gap: 8px; min-height: 52px; margin-bottom: 12px; align-content: flex-start; }
+  .fam-chip { padding: 12px 18px; border-radius: 999px; border: 2px solid var(--p320); background: var(--panel-2); color: var(--p320); font-size: 19px; font-weight: 800; }
+  .fam-chip:active { background: var(--p320); color: #fff; }
+  .fam-nohay { color: var(--txt-dim); font-size: 15px; padding: 14px 4px; }
+  .fam-teclado { gap: 7px; }
+  .fam-teclado .tecla { padding: 16px 0; font-size: 19px; }
   .camp-tactil.buit { color: #9db3b6; font-weight: 400; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
   html, body {

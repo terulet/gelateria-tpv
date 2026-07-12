@@ -936,7 +936,7 @@ app.post('/api/admin/backup-usb', auth, soloAdmin, (req, res) => {
       if (fs.existsSync(asar)) fs.copyFileSync(asar, path.join(destino, 'app.asar'));
       fs.writeFileSync(path.join(destino, 'LEEME-RESTAURACION.txt'),
         'COPIA COMPLETA TPV GELATERIA\r\nFecha: '+ahora.toLocaleString('es-ES')+'\r\n\r\nNo modifiques estos archivos. Para restaurar, contacta con el administrador.\r\n');
-      fs.writeFileSync(path.join(destino, 'estado.json'), JSON.stringify({version:'TPV Gelateria v4.0.0 + FLAMA Update',fecha:ahora.toISOString(),origen:dataDir},null,2));
+      fs.writeFileSync(path.join(destino, 'estado.json'), JSON.stringify({version:'TPV Gelateria v4.0.2 + FLAMA Update',fecha:ahora.toISOString(),origen:dataDir},null,2));
       res.json({ ok:true, unidad, destino });
     } catch(e) { res.status(500).json({ error:e.message }); }
   });
